@@ -5,10 +5,7 @@ import {
     SquarePen,
     Search,
     PanelLeft,
-    MessageSquare,
-    FolderKanban,
 } from "lucide-react";
-import type { ImperativePanelHandle } from "react-resizable-panels";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -17,14 +14,10 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-    ResizablePanel,
-    ResizableHandle,
-} from "@/components/ui/resizable";
 
-// Constants for sidebar dimensions
-export const SIDEBAR_EXPANDED_SIZE = 18;
-export const SIDEBAR_COLLAPSED_SIZE = 5;
+// Constants for sidebar dimensions (in pixels)
+export const SIDEBAR_EXPANDED_WIDTH = 240;
+export const SIDEBAR_COLLAPSED_WIDTH = 56;
 
 // Mock folder name (in future this will come from file system)
 const FOLDER_NAME = "BaseBrain";
@@ -61,7 +54,7 @@ function SidebarItem({
     const button = (
         <button
             onClick={onClick}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors w-full ${isCollapsed ? "justify-center" : "text-left"
+            className={`flex items-center gap-3 rounded-md py-2 hover:bg-muted/50 transition-colors w-full cursor-pointer ${isCollapsed ? "justify-center px-0" : "text-left px-3"
                 }`}
         >
             <Icon className={`${iconSize} shrink-0 text-muted-foreground`} />
@@ -85,30 +78,23 @@ function SidebarItem({
     return button;
 }
 
-// Chat Item Component (for the chat history with proper truncation)
+// Chat Item Component (for the chat history with proper truncation - no icons)
 function ChatItem({
-    icon: Icon,
     title,
     onClick,
 }: {
-    icon: React.ElementType;
     title: string;
     onClick?: () => void;
 }) {
     return (
         <button
             onClick={onClick}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors w-full text-left"
+            className="group flex w-full items-center rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/50 outline-none cursor-pointer"
+            title={title}
         >
-            <Icon className="size-4 shrink-0 text-muted-foreground" />
-            <div className="flex-1 min-w-0">
-                <span
-                    className="text-sm text-foreground block truncate"
-                    title={title}
-                >
-                    {title}
-                </span>
-            </div>
+            <span className="w-full truncate text-sm text-foreground">
+                {title}
+            </span>
         </button>
     );
 }
@@ -117,9 +103,11 @@ function ChatItem({
 function SidebarContent({
     isCollapsed,
     onExpandClick,
+    onCollapseClick,
 }: {
     isCollapsed: boolean;
     onExpandClick: () => void;
+    onCollapseClick: () => void;
 }) {
     const [isHovering, setIsHovering] = React.useState(false);
     const firstLetter = FOLDER_NAME.charAt(0).toUpperCase();
@@ -133,47 +121,69 @@ function SidebarContent({
 
     return (
         <TooltipProvider delayDuration={0}>
-            <div className="h-full flex flex-col overflow-hidden">
+            <div className="h-full flex flex-col">
                 {/* Sidebar Header */}
                 <div className="p-2 shrink-0">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                onClick={handleHeaderClick}
-                                onMouseEnter={() => setIsHovering(true)}
-                                onMouseLeave={() => setIsHovering(false)}
-                                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-colors w-full ${isCollapsed
-                                    ? "justify-center hover:bg-muted/50 cursor-pointer"
-                                    : "text-left cursor-default"
-                                    }`}
-                            >
+                    <div
+                        className={`flex items-center gap-3 rounded-lg py-2 transition-colors w-full ${isCollapsed
+                            ? "justify-center px-0"
+                            : "px-3"
+                            }`}
+                    >
+                        {isCollapsed ? (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        onClick={handleHeaderClick}
+                                        onMouseEnter={() => setIsHovering(true)}
+                                        onMouseLeave={() => setIsHovering(false)}
+                                        className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 hover:bg-primary/80 cursor-pointer transition-colors"
+                                    >
+                                        {isHovering ? (
+                                            <PanelLeft className="size-4 text-primary-foreground" />
+                                        ) : (
+                                            <span className="text-sm font-semibold text-primary-foreground">
+                                                {firstLetter}
+                                            </span>
+                                        )}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right">
+                                    Click to expand sidebar
+                                </TooltipContent>
+                            </Tooltip>
+                        ) : (
+                            <>
                                 <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                                    {isCollapsed && isHovering ? (
-                                        <PanelLeft className="size-4 text-primary-foreground" />
-                                    ) : (
-                                        <span className="text-sm font-semibold text-primary-foreground">
-                                            {firstLetter}
-                                        </span>
-                                    )}
-                                </div>
-                                {!isCollapsed && (
-                                    <span className="text-sm font-semibold text-foreground truncate flex-1">
-                                        {FOLDER_NAME}
+                                    <span className="text-sm font-semibold text-primary-foreground">
+                                        {firstLetter}
                                     </span>
-                                )}
-                            </button>
-                        </TooltipTrigger>
-                        {isCollapsed && (
-                            <TooltipContent side="right">
-                                Click to expand sidebar
-                            </TooltipContent>
+                                </div>
+                                <span className="text-sm font-semibold text-foreground truncate flex-1">
+                                    {FOLDER_NAME}
+                                </span>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            onClick={onCollapseClick}
+                                            className="size-8 rounded-lg flex items-center justify-center shrink-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                                        >
+                                            <PanelLeft className="size-4 text-muted-foreground" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right">
+                                        Collapse sidebar
+                                    </TooltipContent>
+                                </Tooltip>
+                            </>
                         )}
-                    </Tooltip>
+                    </div>
                 </div>
 
                 {/* Scrollable Content */}
-                <ScrollArea className="flex-1 scrollbar-thin">
-                    <div className="flex flex-col gap-0.5 p-2 pt-0">
+                {/* We need to override Radix ScrollArea's inner div display:table to block to allow truncation */}
+                <ScrollArea className="flex-1 w-full min-w-0 [&>[data-slot=scroll-area-viewport]>div]:!block">
+                    <div className="flex flex-col gap-0.5 px-3 py-2 min-w-0 w-full">
                         {/* Quick Actions - Always visible, bigger icons when collapsed */}
                         <SidebarItem
                             icon={SquarePen}
@@ -192,15 +202,14 @@ function SidebarContent({
                         {!isCollapsed && (
                             <>
                                 {/* Project Chats Section */}
-                                <div className="mt-4">
-                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+                                <div className="mt-4 w-full min-w-0">
+                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
                                         Project Chats
                                     </span>
-                                    <div className="flex flex-col gap-0.5 mt-1">
+                                    <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
                                         {projectChats.map((chat) => (
                                             <ChatItem
                                                 key={chat.id}
-                                                icon={FolderKanban}
                                                 title={chat.title}
                                             />
                                         ))}
@@ -208,15 +217,14 @@ function SidebarContent({
                                 </div>
 
                                 {/* General Chats Section */}
-                                <div className="mt-4">
-                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+                                <div className="mt-4 w-full min-w-0">
+                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
                                         Chats
                                     </span>
-                                    <div className="flex flex-col gap-0.5 mt-1">
+                                    <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
                                         {generalChats.map((chat) => (
                                             <ChatItem
                                                 key={chat.id}
-                                                icon={MessageSquare}
                                                 title={chat.title}
                                             />
                                         ))}
@@ -233,104 +241,58 @@ function SidebarContent({
 
 // Main Sidebar Component Props
 interface BuilderSidebarProps {
-    sidebarRef: React.RefObject<ImperativePanelHandle | null>;
     isCollapsed: boolean;
-    onResize: (size: number) => void;
-    onDragEnd: () => void;
     onExpandClick: () => void;
+    onCollapseClick: () => void;
 }
 
 // Main Sidebar Panel Component
 export function BuilderSidebar({
-    sidebarRef,
     isCollapsed,
-    onResize,
-    onDragEnd,
     onExpandClick,
+    onCollapseClick,
 }: BuilderSidebarProps) {
     return (
-        <>
-            <ResizablePanel
-                ref={sidebarRef}
-                defaultSize={SIDEBAR_EXPANDED_SIZE}
-                minSize={SIDEBAR_COLLAPSED_SIZE}
-                maxSize={30}
-                onResize={onResize}
-                className="p-2"
-            >
-                <div
-                    className="h-full rounded-xl bg-card/50 border border-border/30"
-                    style={{
-                        minWidth: isCollapsed ? '56px' : '180px',
-                        overflow: 'hidden'
-                    }}
-                >
-                    <SidebarContent
-                        isCollapsed={isCollapsed}
-                        onExpandClick={onExpandClick}
-                    />
-                </div>
-            </ResizablePanel>
-
-            <ResizableHandle
-                className="bg-transparent w-1 hover:bg-border/50 transition-colors"
-                onDragging={(isDragging) => {
-                    if (!isDragging) {
-                        onDragEnd();
-                    }
+        <div className="p-2 shrink-0">
+            <div
+                className="h-full rounded-xl bg-card/50 border border-border/30 transition-all duration-200 overflow-hidden"
+                style={{
+                    width: isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
                 }}
-            />
-        </>
+            >
+                <SidebarContent
+                    isCollapsed={isCollapsed}
+                    onExpandClick={onExpandClick}
+                    onCollapseClick={onCollapseClick}
+                />
+            </div>
+        </div>
     );
 }
 
 // Hook for sidebar state management
 export function useSidebarState() {
-    const sidebarPanelRef = React.useRef<ImperativePanelHandle>(null);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
     // Toggle sidebar between expanded and collapsed
     const toggleSidebar = React.useCallback(() => {
-        if (sidebarPanelRef.current) {
-            if (isSidebarCollapsed) {
-                sidebarPanelRef.current.resize(SIDEBAR_EXPANDED_SIZE);
-            } else {
-                sidebarPanelRef.current.resize(SIDEBAR_COLLAPSED_SIZE);
-            }
-        }
-    }, [isSidebarCollapsed]);
+        setIsSidebarCollapsed((prev) => !prev);
+    }, []);
 
     // Expand sidebar (called from header click when collapsed)
     const expandSidebar = React.useCallback(() => {
-        if (sidebarPanelRef.current && isSidebarCollapsed) {
-            sidebarPanelRef.current.resize(SIDEBAR_EXPANDED_SIZE);
-        }
-    }, [isSidebarCollapsed]);
+        setIsSidebarCollapsed(false);
+    }, []);
 
-    // Handle sidebar resize - determine if collapsed or expanded
-    const handleSidebarResize = React.useCallback((size: number) => {
-        const threshold = (SIDEBAR_EXPANDED_SIZE + SIDEBAR_COLLAPSED_SIZE) / 2;
-        const shouldBeCollapsed = size < threshold;
-
-        if (shouldBeCollapsed !== isSidebarCollapsed) {
-            setIsSidebarCollapsed(shouldBeCollapsed);
-        }
-    }, [isSidebarCollapsed]);
-
-    // Snap sidebar when drag ends
-    const handleSidebarDragEnd = React.useCallback(() => {
-        if (sidebarPanelRef.current) {
-            const targetSize = isSidebarCollapsed ? SIDEBAR_COLLAPSED_SIZE : SIDEBAR_EXPANDED_SIZE;
-            sidebarPanelRef.current.resize(targetSize);
-        }
-    }, [isSidebarCollapsed]);
+    // Collapse sidebar (called from header button when expanded)
+    const collapseSidebar = React.useCallback(() => {
+        setIsSidebarCollapsed(true);
+    }, []);
 
     return {
-        sidebarPanelRef,
         isSidebarCollapsed,
         toggleSidebar,
         expandSidebar,
-        handleSidebarResize,
-        handleSidebarDragEnd,
+        collapseSidebar,
     };
 }

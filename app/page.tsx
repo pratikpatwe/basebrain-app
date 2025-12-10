@@ -52,12 +52,10 @@ export default function Home() {
 
     // Use the sidebar state hook
     const {
-        sidebarPanelRef,
         isSidebarCollapsed,
         toggleSidebar,
         expandSidebar,
-        handleSidebarResize,
-        handleSidebarDragEnd,
+        collapseSidebar,
     } = useSidebarState();
 
     // Detect platform on mount
@@ -215,18 +213,16 @@ export default function Home() {
                 <ResizablePanelGroup direction="horizontal" className="h-full">
                     {/* Sidebar */}
                     <BuilderSidebar
-                        sidebarRef={sidebarPanelRef}
                         isCollapsed={isSidebarCollapsed}
-                        onResize={handleSidebarResize}
-                        onDragEnd={handleSidebarDragEnd}
                         onExpandClick={expandSidebar}
+                        onCollapseClick={collapseSidebar}
                     />
 
                     {/* Middle Panel — Chat Area + Dock */}
                     <ResizablePanel
                         defaultSize={32}
-                        minSize={20}
-                        className="p-2 pl-0"
+                        minSize={28}
+                        className="py-2"
                     >
                         <div className="h-full flex flex-col gap-2">
                             {/* Chat Area */}
@@ -244,8 +240,8 @@ export default function Home() {
                             </div>
 
                             {/* Bottom Dock */}
-                            <div className="shrink-0 h-16 rounded-xl bg-card/50 border border-border/30 flex items-center justify-center relative overflow-visible">
-                                <div className="flex-shrink-0 overflow-visible">
+                            <div className="shrink-0 flex items-center justify-center">
+                                <div className="h-16 w-fit rounded-xl bg-card/50 border border-border/30 flex items-center justify-center px-2 overflow-visible">
                                     <Dock
                                         magnification={48}
                                         distance={80}
@@ -270,7 +266,7 @@ export default function Home() {
                         </div>
                     </ResizablePanel>
 
-                    <ResizableHandle className="bg-transparent w-1 hover:bg-border/50 transition-colors" />
+                    <ResizableHandle className="bg-transparent w-1 transition-colors" />
 
                     {/* Right Panel — Code Editor Area (Collapsible) */}
                     <ResizablePanel
@@ -281,7 +277,7 @@ export default function Home() {
                         collapsedSize={0}
                         onCollapse={handleEditorCollapse}
                         onExpand={handleEditorExpand}
-                        className="p-2 pl-0"
+                        className="p-2"
                     >
                         <div
                             className={`h-full rounded-xl bg-card/80 border border-border/30 overflow-hidden ${isEditorCollapsed ? "hidden" : ""
