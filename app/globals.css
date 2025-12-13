@@ -122,6 +122,48 @@
   }
 }
 
+/* ===== Desktop App Behavior ===== */
+/* Disable text selection globally (feels more like a native app) */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in inputs, textareas, and contenteditable elements */
+input,
+textarea,
+[contenteditable="true"],
+.selectable {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Disable image dragging */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  pointer-events: none;
+}
+
+/* Re-enable pointer events for clickable images */
+button img,
+a img,
+.clickable-image {
+  pointer-events: auto;
+}
+
+/* Disable context menu on non-input elements (optional - uncomment if needed) */
+/* *:not(input):not(textarea) {
+  -webkit-touch-callout: none;
+} */
+
 /* Electron title bar drag utilities */
 .app-drag {
   -webkit-app-region: drag;
