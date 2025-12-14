@@ -157,19 +157,19 @@ export function BuilderHeader({ searchInputRef }: BuilderHeaderProps) {
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="rounded-10 bg-muted/50 hover:bg-muted shrink-0"
+                    className="rounded-10 hover:bg-muted shrink-0"
                 >
                     <Image
                         src="/logo.svg"
                         alt="BaseBrain Logo"
-                        width={20}
-                        height={21}
+                        width={25}
+                        height={25}
                         className="shrink-0"
                     />
                 </Button>
 
                 {/* Search Bar */}
-                <Command className="rounded-full border border-border/50 bg-muted/50 shadow-sm w-[400px]">
+                <Command className="rounded-full border border-border/10 bg-muted/10 shadow-sm w-[400px]">
                     <div className="flex items-center px-4 h-10">
                         <SearchIcon className="size-4 shrink-0 text-muted-foreground/70" />
                         <input

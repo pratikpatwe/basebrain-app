@@ -91,7 +91,7 @@ export default function Home() {
                     >
                         <div className="h-full flex flex-col gap-2">
                             {/* Chat Area */}
-                            <div className="flex-1 rounded-xl bg-card/50 border border-border/30 overflow-hidden">
+                            <div className="flex-1 rounded-xl  overflow-hidden">
                                 <ScrollArea className="h-full">
                                     <div className="p-4">
                                         {/* Empty chat placeholder */}
