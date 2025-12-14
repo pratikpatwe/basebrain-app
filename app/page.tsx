@@ -91,7 +91,7 @@ export default function Home() {
                     >
                         <div className="h-full flex flex-col gap-2 overflow-visible">
                             {/* Chat Area */}
-                            <div className="flex-1 rounded-xl  overflow-hidden">
+                            <div className="flex-1 rounded-xl overflow-hidden">
                                 <ScrollArea className="h-full">
                                     <div className="p-4">
                                         {/* Empty chat placeholder */}
@@ -126,42 +126,6 @@ export default function Home() {
                             className={`h-full rounded-xl bg-card/80 border border-border/30 overflow-hidden ${isEditorCollapsed ? "hidden" : ""
                                 }`}
                         >
-                            <div className="h-full flex flex-col">
-                                {/* Editor header bar */}
-                                <div className="h-10 border-b border-border/30 flex items-center px-4 shrink-0">
-                                    <div className="flex items-center gap-2">
-                                        <div className="size-3 rounded-full bg-muted-foreground/20" />
-                                        <div className="size-3 rounded-full bg-muted-foreground/20" />
-                                        <div className="size-3 rounded-full bg-muted-foreground/20" />
-                                    </div>
-                                    <span className="ml-4 text-xs text-muted-foreground/50 font-mono">
-                                        untitled
-                                    </span>
-                                </div>
-
-                                {/* Editor content area */}
-                                <ScrollArea className="flex-1">
-                                    <div className="p-4 font-mono text-sm">
-                                        <div className="flex">
-                                            <div className="pr-4 text-muted-foreground/30 select-none text-right w-8">
-                                                {Array.from({ length: 20 }, (_, i) => (
-                                                    <div key={i} className="leading-6">
-                                                        {i + 1}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="flex-1 text-muted-foreground/20">
-                                                {Array.from({ length: 20 }, (_, i) => (
-                                                    <div key={i} className="leading-6">
-                                                        {i === 0 && "// BaseBrain Editor"}
-                                                        {i === 1 && "// Start coding here..."}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </ScrollArea>
-                            </div>
                         </div>
                     </ResizablePanel>
                 </ResizablePanelGroup>

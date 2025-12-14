@@ -112,6 +112,11 @@ function SidebarContent({
     const [isHovering, setIsHovering] = React.useState(false);
     const firstLetter = FOLDER_NAME.charAt(0).toUpperCase();
 
+    // Reset hover state when sidebar collapse state changes
+    React.useEffect(() => {
+        setIsHovering(false);
+    }, [isCollapsed]);
+
     // Header is only clickable when collapsed (to expand)
     const handleHeaderClick = () => {
         if (isCollapsed) {
