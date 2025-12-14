@@ -7,6 +7,7 @@
  * - Route protection (redirect to /login if not authenticated)
  * - Token refresh handling
  * - User data context
+ * - Offline detection and retry logic
  */
 
 import React, {
@@ -15,14 +16,19 @@ import React, {
     useEffect,
     useState,
     useCallback,
+    useRef,
     ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-    initializeSession,
+    initializeSessionWithRetry,
     setupTokenRefreshListener,
     SessionPayload,
 } from "./supabase";
+import {
+    isOnline as checkIsOnline,
+    subscribeToNetworkStatus,
+} from "./network";
 
 /**
  * User data structure
@@ -41,6 +47,7 @@ interface AuthContextValue {
     user: User | null;
     isLoading: boolean;
     isAuthenticated: boolean;
+    isOnline: boolean;
     logout: () => Promise<void>;
 }
 
@@ -49,6 +56,7 @@ const AuthContext = createContext<AuthContextValue>({
     user: null,
     isLoading: true,
     isAuthenticated: false,
+    isOnline: true,
     logout: async () => { },
 });
 
@@ -77,6 +85,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isOnline, setIsOnline] = useState(true);
     const router = useRouter();
     const pathname = usePathname();
 
@@ -86,6 +95,21 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     // Public routes that don't require authentication
     const publicRoutes = ["/login"];
     const isPublicRoute = publicRoutes.includes(pathname);
+
+    // Refs to access current values in async callbacks (avoid stale closures)
+    const routerRef = useRef(router);
+    const isPublicRouteRef = useRef(isPublicRoute);
+    const pathnameRef = useRef(pathname);
+
+    // Keep refs updated
+    routerRef.current = router;
+    isPublicRouteRef.current = isPublicRoute;
+    pathnameRef.current = pathname;
+
+    // Initialize online status
+    useEffect(() => {
+        setIsOnline(checkIsOnline());
+    }, []);
 
     /**
      * Logout function - only clears local session, does NOT invalidate server tokens
@@ -111,6 +135,24 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     }, [isElectron, router]);
 
     /**
+     * Subscribe to network status changes
+     */
+    useEffect(() => {
+        const unsubscribe = subscribeToNetworkStatus(
+            () => {
+                console.log("[AuthProvider] Network: Back online");
+                setIsOnline(true);
+            },
+            () => {
+                console.log("[AuthProvider] Network: Gone offline");
+                setIsOnline(false);
+            }
+        );
+
+        return unsubscribe;
+    }, []);
+
+    /**
      * Initialize authentication on mount
      */
     useEffect(() => {
@@ -134,8 +176,8 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                     setIsLoading(false);
 
                     // Redirect to login if on protected route
-                    if (!isPublicRoute) {
-                        router.push("/login");
+                    if (!isPublicRouteRef.current) {
+                        routerRef.current.push("/login");
                     }
                     return;
                 }
@@ -149,14 +191,14 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                     setUser(null);
                     setIsLoading(false);
 
-                    if (!isPublicRoute) {
-                        router.push("/login");
+                    if (!isPublicRouteRef.current) {
+                        routerRef.current.push("/login");
                     }
                     return;
                 }
 
-                // Initialize Supabase with the session
-                const success = await initializeSession(savedSession);
+                // Initialize Supabase with the session (with retry for network failures)
+                const success = await initializeSessionWithRetry(savedSession);
 
                 if (!success) {
                     console.log("[AuthProvider] Session invalid, clearing...");
@@ -164,8 +206,8 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                     setUser(null);
                     setIsLoading(false);
 
-                    if (!isPublicRoute) {
-                        router.push("/login");
+                    if (!isPublicRouteRef.current) {
+                        routerRef.current.push("/login");
                     }
                     return;
                 }
@@ -174,27 +216,40 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                 setUser(savedSession.user);
 
                 // Setup token refresh listener
-                unsubscribe = setupTokenRefreshListener(async (newSession) => {
-                    // Save new tokens to keytar
-                    if (window.electronAuth) {
-                        await window.electronAuth.saveSession(newSession);
-                    }
-                    console.log("[AuthProvider] Session refreshed and saved");
+                unsubscribe = setupTokenRefreshListener(
+                    async (newSession) => {
+                        // Save new tokens to keytar
+                        if (window.electronAuth) {
+                            await window.electronAuth.saveSession(newSession);
+                        }
+                        console.log("[AuthProvider] Session refreshed and saved");
 
-                    // Update user data if it changed
-                    setUser(newSession.user);
-                });
+                        // Update user data if it changed
+                        setUser(newSession.user);
+                    },
+                    // Handle signed out event from server
+                    async () => {
+                        console.log("[AuthProvider] Server signed out, clearing session...");
+                        if (window.electronAuth) {
+                            await window.electronAuth.logout();
+                        }
+                        setUser(null);
+                        if (!isPublicRouteRef.current) {
+                            routerRef.current.push("/login");
+                        }
+                    }
+                );
 
                 // If on login page but authenticated, redirect to home
-                if (isPublicRoute && pathname === "/login") {
-                    router.push("/");
+                if (isPublicRouteRef.current && pathnameRef.current === "/login") {
+                    routerRef.current.push("/");
                 }
             } catch (error) {
                 console.error("[AuthProvider] Init error:", error);
                 setUser(null);
 
-                if (!isPublicRoute) {
-                    router.push("/login");
+                if (!isPublicRouteRef.current) {
+                    routerRef.current.push("/login");
                 }
             } finally {
                 setIsLoading(false);
@@ -209,13 +264,15 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                 unsubscribe();
             }
         };
-    }, [isElectron, isPublicRoute, pathname, router]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isElectron]); // Only run on mount, not on every route change
 
     // Context value
     const value: AuthContextValue = {
         user,
         isLoading,
         isAuthenticated: !!user,
+        isOnline,
         logout,
     };
 
@@ -226,7 +283,14 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
                 <div className="min-h-screen flex items-center justify-center bg-background">
                     <div className="flex flex-col items-center gap-4">
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        <p className="text-sm text-muted-foreground">Loading...</p>
+                        <p className="text-sm text-muted-foreground">
+                            {isOnline ? "Loading..." : "Waiting for connection..."}
+                        </p>
+                        {!isOnline && (
+                            <p className="text-xs text-yellow-500">
+                                You appear to be offline
+                            </p>
+                        )}
                     </div>
                 </div>
             </AuthContext.Provider>

@@ -8,8 +8,8 @@ import {
     ResizablePanel,
     ResizableHandle,
 } from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { BuilderSidebar, useSidebarState } from "@/components/builder/sidebar";
+import { ChatArea } from "@/components/builder/chat/chat-area";
 import { BuilderMenu } from "@/components/builder/menu";
 import { BuilderHeader, HEADER_HEIGHT } from "@/components/builder/header";
 
@@ -91,18 +91,7 @@ export default function Home() {
                     >
                         <div className="h-full flex flex-col gap-2 overflow-visible">
                             {/* Chat Area */}
-                            <div className="flex-1 rounded-xl overflow-hidden">
-                                <ScrollArea className="h-full">
-                                    <div className="p-4">
-                                        {/* Empty chat placeholder */}
-                                        <div className="h-full min-h-[400px] flex items-center justify-center">
-                                            <span className="text-muted-foreground/40 text-sm">
-                                                Chat Area
-                                            </span>
-                                        </div>
-                                    </div>
-                                </ScrollArea>
-                            </div>
+                            <ChatArea />
 
                             {/* Bottom Dock Menu */}
                             <BuilderMenu onOpenEditor={openEditor} />

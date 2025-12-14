@@ -68,11 +68,76 @@ export async function initializeSession(
 }
 
 /**
+ * Check if an error is a network-related error that should be retried
+ */
+export function isNetworkError(error: unknown): boolean {
+    if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        return (
+            message.includes("network") ||
+            message.includes("fetch") ||
+            message.includes("connection") ||
+            message.includes("timeout") ||
+            message.includes("econnrefused") ||
+            message.includes("enotfound") ||
+            message.includes("offline")
+        );
+    }
+    return false;
+}
+
+/**
+ * Initialize session with exponential backoff retry for network failures
+ * Use this for production environments where network can be unstable
+ */
+export async function initializeSessionWithRetry(
+    savedSession: SessionPayload,
+    maxRetries: number = 3
+): Promise<boolean> {
+    // Import dynamically to avoid circular dependencies
+    const { withExponentialBackoff, isOnline } = await import("./network");
+
+    // If offline, wait for connection first
+    if (!isOnline()) {
+        console.log("[Supabase] Offline, waiting for connection before initializing session...");
+        const { waitForOnline } = await import("./network");
+        await waitForOnline();
+    }
+
+    try {
+        return await withExponentialBackoff(
+            async () => {
+                const result = await initializeSession(savedSession);
+                if (!result) {
+                    // If session is invalid (not a network error), don't retry
+                    throw new Error("Session invalid");
+                }
+                return result;
+            },
+            {
+                maxRetries,
+                initialDelay: 1000,
+                maxDelay: 10000,
+            },
+            (error) => {
+                // Only retry network errors, not auth errors
+                return isNetworkError(error);
+            }
+        );
+    } catch (error) {
+        // If all retries failed or it's not a retryable error
+        console.error("[Supabase] Session initialization failed after retries:", error);
+        return false;
+    }
+}
+
+/**
  * Setup listener for token refresh events
  * Calls the callback with new session data when tokens are refreshed
  */
 export function setupTokenRefreshListener(
-    onRefresh: (session: SessionPayload) => void
+    onRefresh: (session: SessionPayload) => void,
+    onSignedOut?: () => void
 ): () => void {
     const { data: subscription } = supabase.auth.onAuthStateChange(
         (event: AuthChangeEvent, session: Session | null) => {
@@ -100,7 +165,10 @@ export function setupTokenRefreshListener(
             }
 
             if (event === "SIGNED_OUT") {
-                console.log("[Supabase] User signed out");
+                console.log("[Supabase] User signed out from server");
+                if (onSignedOut) {
+                    onSignedOut();
+                }
             }
         }
     );
