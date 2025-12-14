@@ -91,55 +91,56 @@ export function BuilderHeader({ searchInputRef }: BuilderHeaderProps) {
 
     // User profile dropdown
     const UserProfileDropdown = (
-        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen} modal={false}>
-            <DropdownMenuTrigger asChild>
-                {UserAvatarButton}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-                align={isMac ? "end" : "start"}
-                sideOffset={8}
-                className="w-56"
-                onInteractOutside={() => setDropdownOpen(false)}
-                onEscapeKeyDown={() => setDropdownOpen(false)}
-            >
-                <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">
-                            {user?.name || "User"}
-                        </p>
-                        <p className="text-xs leading-none text-muted-foreground">
-                            {user?.email}
-                        </p>
-                    </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer">
-                    <UserCircle className="mr-2 size-4" />
-                    Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer">
-                    <BarChart3 className="mr-2 size-4" />
-                    Usage
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                    className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
-                    onClick={() => {
-                        setDropdownOpen(false);
-                        logout();
-                    }}
+        <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                <DropdownMenuTrigger asChild>
+                    {UserAvatarButton}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                    align={isMac ? "end" : "start"}
+                    sideOffset={8}
+                    className="w-56"
                 >
-                    <LogOut className="mr-2 size-4" />
-                    Log out
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
+                    <DropdownMenuLabel className="font-normal">
+                        <div className="flex flex-col space-y-1">
+                            <p className="text-sm font-medium leading-none">
+                                {user?.name || "User"}
+                            </p>
+                            <p className="text-xs leading-none text-muted-foreground">
+                                {user?.email}
+                            </p>
+                        </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="cursor-pointer">
+                        <UserCircle className="mr-2 size-4" />
+                        Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer">
+                        <BarChart3 className="mr-2 size-4" />
+                        Usage
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                        className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                        onClick={() => {
+                            setDropdownOpen(false);
+                            logout();
+                        }}
+                    >
+                        <LogOut className="mr-2 size-4" />
+                        Log out
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
     );
 
     return (
         <header
-            className="flex items-center justify-between px-4 bg-background shrink-0 app-drag"
+            className={`flex items-center justify-between px-4 bg-background shrink-0 ${dropdownOpen ? "app-no-drag" : "app-drag"}`}
             style={{ height: HEADER_HEIGHT, paddingTop: "10px" }}
+            onClick={() => dropdownOpen && setDropdownOpen(false)}
         >
             {/* Left side: User profile on Windows/Linux, empty space on Mac (for traffic lights) */}
             <div className="flex items-center justify-start min-w-[100px] h-full">
