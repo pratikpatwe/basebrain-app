@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 const DEFAULT_MAGNIFICATION = 60;
 const DEFAULT_DISTANCE = 140;
-const DEFAULT_PANEL_HEIGHT = 48;
+const DEFAULT_PANEL_HEIGHT = 64;
 
 type DockProps = {
     children: React.ReactNode;
@@ -85,7 +85,7 @@ function Dock({
             onMouseMove={(e) => mouseX.set(e.pageX)}
             onMouseLeave={() => mouseX.set(Infinity)}
             className={cn(
-                'flex items-end justify-center gap-3 rounded-2xl px-3',
+                'flex items-end justify-center gap-2 px-2 pb-2',
                 className
             )}
             style={{ height: panelHeight }}
@@ -113,7 +113,7 @@ function DockItem({ children, className, onClick }: DockItemProps) {
     const sizeTransform = useTransform(
         mouseDistance,
         [-distance, 0, distance],
-        [36, magnification, 36]
+        [40, magnification, 40]
     );
 
     const size = useSpring(sizeTransform, spring);
@@ -126,7 +126,7 @@ function DockItem({ children, className, onClick }: DockItemProps) {
             onMouseLeave={() => setIsHovered(false)}
             onClick={onClick}
             className={cn(
-                'relative flex cursor-pointer items-center justify-center rounded-xl transition-colors',
+                'relative flex cursor-pointer items-center justify-center rounded-xl',
                 className
             )}
             role="button"
@@ -180,11 +180,11 @@ function DockLabelInner({
         <AnimatePresence>
             {isHovered && (
                 <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: -4 }}
-                    exit={{ opacity: 0, y: 4 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md border border-border/50 z-50"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2.5 py-1 text-xs font-medium text-popover-foreground shadow-lg border border-border/40"
                 >
                     {children}
                 </motion.div>
@@ -200,7 +200,7 @@ function DockLabel({ children, className }: DockLabelProps) {
 
 function DockIcon({ children, className }: DockIconProps) {
     return (
-        <div className={cn('flex h-full w-full items-center justify-center p-2', className)}>
+        <div className={cn('flex h-full w-full items-center justify-center', className)}>
             {children}
         </div>
     );

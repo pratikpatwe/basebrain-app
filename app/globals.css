@@ -224,3 +224,13 @@ a img,
 .scrollbar-hover:hover::-webkit-scrollbar-thumb:hover {
   background-color: var(--muted-foreground);
 }
+
+/* Completely hide scrollbar while keeping scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}

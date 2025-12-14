@@ -86,10 +86,10 @@ export default function Home() {
                     {/* Middle Panel — Chat Area + Dock */}
                     <ResizablePanel
                         defaultSize={32}
-                        minSize={28}
+                        minSize={38}
                         className="py-2 ml-1"
                     >
-                        <div className="h-full flex flex-col gap-2">
+                        <div className="h-full flex flex-col gap-2 overflow-visible">
                             {/* Chat Area */}
                             <div className="flex-1 rounded-xl  overflow-hidden">
                                 <ScrollArea className="h-full">

@@ -38,7 +38,7 @@ export function BuilderMenu({ onOpenEditor }: BuilderMenuProps) {
             onClick: onOpenEditor,
         },
         {
-            title: "Backend Map",
+            title: "Backend Builder",
             icon: Workflow,
             onClick: () => { },
         },
@@ -60,13 +60,13 @@ export function BuilderMenu({ onOpenEditor }: BuilderMenuProps) {
     ];
 
     return (
-        <div className="shrink-0 flex items-center justify-center">
-            <div className="h-16 w-fit rounded-xl bg-card/50 border border-border/30 flex items-center justify-center px-2 overflow-visible">
+        <div className="shrink-0 flex items-end justify-center pb-2 px-2">
+            <div className="rounded-2xl bg-card/50 border border-border/30 overflow-visible">
                 <Dock
-                    magnification={48}
-                    distance={80}
-                    panelHeight={48}
-                    className="bg-transparent overflow-visible"
+                    magnification={68}
+                    distance={120}
+                    panelHeight={56}
+                    className="bg-transparent"
                 >
                     {menuItems.map((item, idx) => (
                         <DockItem
