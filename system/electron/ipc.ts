@@ -258,4 +258,39 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         const { getCommandStatus } = await import("./tools/commands");
         return getCommandStatus(commandId);
     });
+
+    // ============================================
+    // FILE SYSTEM IPC HANDLERS
+    // ============================================
+
+    // Read directory structure
+    ipcMain.handle("fs:readDirectory", async (_, dirPath: string, maxDepth?: number) => {
+        const { readDirectoryStructure } = await import("./services/file-system");
+        return readDirectoryStructure(dirPath, maxDepth);
+    });
+
+    // Read file content
+    ipcMain.handle("fs:readFile", async (_, filePath: string) => {
+        const { readFileContent } = await import("./services/file-system");
+        return readFileContent(filePath);
+    });
+
+    // Write file content
+    ipcMain.handle("fs:writeFile", async (_, filePath: string, content: string) => {
+        const { writeFileContent } = await import("./services/file-system");
+        await writeFileContent(filePath, content);
+        return true;
+    });
+
+    // Check if path exists
+    ipcMain.handle("fs:pathExists", async (_, filePath: string) => {
+        const { pathExists } = await import("./services/file-system");
+        return pathExists(filePath);
+    });
+
+    // Get path stats
+    ipcMain.handle("fs:getStats", async (_, filePath: string) => {
+        const { getPathStats } = await import("./services/file-system");
+        return getPathStats(filePath);
+    });
 }

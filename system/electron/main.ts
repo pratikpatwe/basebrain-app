@@ -34,6 +34,7 @@ async function createWindow(): Promise<void> {
         height: 800,
         minWidth: MIN_WIDTH,
         minHeight: MIN_HEIGHT,
+        icon: path.join(__dirname, "..", "..", "public", "app-logo.png"),
         titleBarStyle: "hidden",
         // Windows-specific: show window controls as overlay
         ...(process.platform === "win32" && {

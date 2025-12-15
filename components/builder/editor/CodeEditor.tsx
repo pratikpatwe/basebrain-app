@@ -59,13 +59,64 @@ function FileNotFound({ path }: { path: string }) {
 
 export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
     // File system state
-    const [files, setFiles] = React.useState<FileSystemNode[]>(
-        initialFiles || createDemoFileTree()
-    )
+    const [files, setFiles] = React.useState<FileSystemNode[]>(initialFiles || [])
+    const [isLoading, setIsLoading] = React.useState(true)
+    const [projectPath, setProjectPath] = React.useState<string | null>(null)
 
     // Open files and active file state
     const [openFiles, setOpenFiles] = React.useState<OpenFile[]>([])
     const [activeFileId, setActiveFileId] = React.useState<string | null>(null)
+
+    // Load current project path and files on mount
+    React.useEffect(() => {
+        const loadProject = async () => {
+            if (typeof window === "undefined" || !window.electronDB) return
+
+            try {
+                // Get current project from app state
+                const appState = await window.electronDB.appState.get()
+                const lastProjectPath = appState?.lastProjectPath
+
+                if (lastProjectPath && window.electronFS) {
+                    setProjectPath(lastProjectPath)
+
+                    // Load directory structure
+                    const structure = await window.electronFS.readDirectory(lastProjectPath, 4)
+                    setFiles(structure as FileSystemNode[])
+                }
+            } catch (error) {
+                console.error("Error loading project:", error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        loadProject()
+
+        // Poll for project changes every 2 seconds
+        const interval = setInterval(async () => {
+            if (typeof window === "undefined" || !window.electronDB) return
+
+            try {
+                const appState = await window.electronDB.appState.get()
+                const currentPath = appState?.lastProjectPath
+
+                // If project path changed, reload
+                if (currentPath && currentPath !== projectPath && window.electronFS) {
+                    setProjectPath(currentPath)
+                    setOpenFiles([]) // Clear open files
+                    setActiveFileId(null)
+
+                    const structure = await window.electronFS.readDirectory(currentPath, 4)
+                    setFiles(structure as FileSystemNode[])
+                }
+            } catch (error) {
+                console.error("Error checking project changes:", error)
+            }
+        }, 2000)
+
+        return () => clearInterval(interval)
+    }, [projectPath])
 
     // Get the currently active file
     const activeFile = React.useMemo(() => {
@@ -88,8 +139,8 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
         setFiles((prev) => toggleFolder(prev))
     }, [])
 
-    // Open a file
-    const handleFileSelect = React.useCallback((file: FileNode) => {
+    // Open a file - now loads content from disk
+    const handleFileSelect = React.useCallback(async (file: FileNode) => {
         // Check if file is already open
         const existingFile = openFiles.find((f) => f.path === file.path)
 
@@ -99,13 +150,24 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
             return
         }
 
+        // Load file content from disk
+        let content = ""
+        if (window.electronFS) {
+            try {
+                content = await window.electronFS.readFile(file.path)
+            } catch (error) {
+                console.error(`Error reading file ${file.path}:`, error)
+                content = `// Error loading file: ${error}`
+            }
+        }
+
         // Create new open file entry
         const newOpenFile: OpenFile = {
             id: generateId(),
             name: file.name,
             path: file.path,
-            content: file.content || "",
-            language: file.language || getLanguageFromFilename(file.name),
+            content,
+            language: getLanguageFromFilename(file.name),
             isDirty: false,
         }
 
@@ -155,7 +217,7 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
         })
     }, [])
 
-    // Handle content change
+    // Handle content change - save to disk
     const handleContentChange = React.useCallback((value: string | undefined) => {
         if (value === undefined || !activeFileId) return
 
@@ -166,7 +228,14 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
                     : file
             )
         )
-    }, [activeFileId])
+
+        // Auto-save to disk (debounced in a real implementation)
+        const file = openFiles.find((f) => f.id === activeFileId)
+        if (file && window.electronFS) {
+            // TODO: Implement debounced save
+            // window.electronFS.writeFile(file.path, value)
+        }
+    }, [activeFileId, openFiles])
 
     // Handle breadcrumb navigation
     const handleBreadcrumbNavigate = React.useCallback((path: string) => {
@@ -179,10 +248,10 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
                         return {
                             ...node,
                             isExpanded: true,
-                            children: expandPath(node.children, targetPath),
+                            children: node.children ? expandPath(node.children, targetPath) : [],
                         }
                     }
-                    return { ...node, children: expandPath(node.children, targetPath) }
+                    return { ...node, children: node.children ? expandPath(node.children, targetPath) : [] }
                 }
                 return node
             })
@@ -209,11 +278,17 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
         console.log("Delete:", path)
     }, [])
 
-    // Refresh handler
-    const handleRefresh = React.useCallback(() => {
-        // In a real implementation, this would refresh the file tree from disk
-        console.log("Refresh file tree")
-    }, [])
+    // Refresh handler - reload directory structure
+    const handleRefresh = React.useCallback(async () => {
+        if (projectPath && window.electronFS) {
+            try {
+                const structure = await window.electronFS.readDirectory(projectPath, 4)
+                setFiles(structure as FileSystemNode[])
+            } catch (error) {
+                console.error("Error refreshing file tree:", error)
+            }
+        }
+    }, [projectPath])
 
     return (
         <div className={cn("h-full w-full bg-background", className)}>

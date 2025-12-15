@@ -89,3 +89,16 @@ electron_1.contextBridge.exposeInMainWorld("electronDB", {
         getStatus: (commandId) => electron_1.ipcRenderer.invoke("cmd:getStatus", commandId),
     },
 });
+// Expose file system API to renderer
+electron_1.contextBridge.exposeInMainWorld("electronFS", {
+    // Read directory structure
+    readDirectory: (dirPath, maxDepth) => electron_1.ipcRenderer.invoke("fs:readDirectory", dirPath, maxDepth),
+    // Read file content
+    readFile: (filePath) => electron_1.ipcRenderer.invoke("fs:readFile", filePath),
+    // Write file content
+    writeFile: (filePath, content) => electron_1.ipcRenderer.invoke("fs:writeFile", filePath, content),
+    // Check if path exists
+    pathExists: (filePath) => electron_1.ipcRenderer.invoke("fs:pathExists", filePath),
+    // Get path stats
+    getStats: (filePath) => electron_1.ipcRenderer.invoke("fs:getStats", filePath),
+});

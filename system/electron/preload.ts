@@ -142,3 +142,26 @@ contextBridge.exposeInMainWorld("electronDB", {
         getStatus: (commandId: string) => ipcRenderer.invoke("cmd:getStatus", commandId),
     },
 });
+
+// Expose file system API to renderer
+contextBridge.exposeInMainWorld("electronFS", {
+    // Read directory structure
+    readDirectory: (dirPath: string, maxDepth?: number) =>
+        ipcRenderer.invoke("fs:readDirectory", dirPath, maxDepth),
+
+    // Read file content
+    readFile: (filePath: string) =>
+        ipcRenderer.invoke("fs:readFile", filePath),
+
+    // Write file content
+    writeFile: (filePath: string, content: string) =>
+        ipcRenderer.invoke("fs:writeFile", filePath, content),
+
+    // Check if path exists
+    pathExists: (filePath: string) =>
+        ipcRenderer.invoke("fs:pathExists", filePath),
+
+    // Get path stats
+    getStats: (filePath: string) =>
+        ipcRenderer.invoke("fs:getStats", filePath),
+});

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Home, File, Folder, ChevronRight } from "lucide-react"
+import { File, Folder, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
     Breadcrumb,
@@ -53,8 +53,7 @@ export function EditorBreadcrumb({
 }: EditorBreadcrumbProps) {
     if (!filePath) {
         return (
-            <div className={cn("flex items-center px-3 py-1.5 bg-muted/10 border-b border-border/30", className)}>
-                <span className="text-xs text-muted-foreground">No file selected</span>
+            <div>
             </div>
         )
     }
@@ -205,23 +204,6 @@ export function EditorBreadcrumb({
         <div className={cn("flex items-center px-3 py-1.5 bg-muted/10 border-b border-border/30", className)}>
             <Breadcrumb>
                 <BreadcrumbList className="gap-1 sm:gap-1.5">
-                    {/* Root icon */}
-                    <BreadcrumbItem>
-                        <BreadcrumbLink
-                            href="#"
-                            onClick={(e) => {
-                                e.preventDefault()
-                                onNavigate?.("/")
-                            }}
-                            className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            <Home className="size-3.5" />
-                        </BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator>
-                        <ChevronRight className="size-3" />
-                    </BreadcrumbSeparator>
-
                     {renderSegments()}
                 </BreadcrumbList>
             </Breadcrumb>

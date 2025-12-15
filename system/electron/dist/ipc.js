@@ -237,4 +237,33 @@ function registerIpcHandlers(getMainWindow) {
         const { getCommandStatus } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
         return getCommandStatus(commandId);
     });
+    // ============================================
+    // FILE SYSTEM IPC HANDLERS
+    // ============================================
+    // Read directory structure
+    electron_1.ipcMain.handle("fs:readDirectory", async (_, dirPath, maxDepth) => {
+        const { readDirectoryStructure } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
+        return readDirectoryStructure(dirPath, maxDepth);
+    });
+    // Read file content
+    electron_1.ipcMain.handle("fs:readFile", async (_, filePath) => {
+        const { readFileContent } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
+        return readFileContent(filePath);
+    });
+    // Write file content
+    electron_1.ipcMain.handle("fs:writeFile", async (_, filePath, content) => {
+        const { writeFileContent } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
+        await writeFileContent(filePath, content);
+        return true;
+    });
+    // Check if path exists
+    electron_1.ipcMain.handle("fs:pathExists", async (_, filePath) => {
+        const { pathExists } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
+        return pathExists(filePath);
+    });
+    // Get path stats
+    electron_1.ipcMain.handle("fs:getStats", async (_, filePath) => {
+        const { getPathStats } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
+        return getPathStats(filePath);
+    });
 }

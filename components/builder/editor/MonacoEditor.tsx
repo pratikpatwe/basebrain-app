@@ -228,10 +228,17 @@ export function MonacoEditor({
         defineCustomTheme(monaco)
         monaco.editor.setTheme("basebrain-dark")
 
-        // Configure TypeScript/JavaScript
+        // Configure TypeScript/JavaScript - Disable strict validation
         monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-            noSemanticValidation: false,
+            noSemanticValidation: true, // Disable semantic errors (type errors, etc.)
+            noSyntaxValidation: false,  // Keep syntax errors only
+            noSuggestionDiagnostics: true,
+        })
+
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: true,
             noSyntaxValidation: false,
+            noSuggestionDiagnostics: true,
         })
 
         monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
@@ -241,8 +248,18 @@ export function MonacoEditor({
             jsx: monaco.languages.typescript.JsxEmit.React,
             allowNonTsExtensions: true,
             allowJs: true,
+            checkJs: false,
             esModuleInterop: true,
-            strict: true,
+            allowSyntheticDefaultImports: true,
+            strict: false,
+            noImplicitAny: false,
+            strictNullChecks: false,
+        })
+
+        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowJs: true,
+            checkJs: false,
         })
 
         // Add keyboard shortcuts
