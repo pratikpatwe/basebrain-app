@@ -5,6 +5,7 @@ import {
     SquarePen,
     Search,
     PanelLeft,
+    FolderOpen,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -14,13 +15,11 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useProject } from "@/lib/project-context";
 
 // Constants for sidebar dimensions (in pixels)
 export const SIDEBAR_EXPANDED_WIDTH = 240;
 export const SIDEBAR_COLLAPSED_WIDTH = 56;
-
-// Mock folder name (in future this will come from file system)
-const FOLDER_NAME = "BaseBrain";
 
 // Mock chat history data
 const projectChats = [
@@ -42,20 +41,25 @@ function SidebarItem({
     isCollapsed,
     isMainAction = false,
     onClick,
+    disabled = false,
 }: {
     icon: React.ElementType;
     label: string;
     isCollapsed: boolean;
     isMainAction?: boolean;
     onClick?: () => void;
+    disabled?: boolean;
 }) {
     const iconSize = isCollapsed && isMainAction ? "size-6" : "size-4";
 
     const button = (
         <button
-            onClick={onClick}
-            className={`flex items-center gap-3 rounded-md py-2 hover:bg-muted/50 transition-colors w-full cursor-pointer ${isCollapsed ? "justify-center px-0" : "text-left px-3"
-                }`}
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            className={`flex items-center gap-3 rounded-md py-2 transition-colors w-full ${disabled
+                ? "opacity-40 cursor-not-allowed"
+                : "hover:bg-muted/50 cursor-pointer"
+                } ${isCollapsed ? "justify-center px-0" : "text-left px-3"}`}
         >
             <Icon className={`${iconSize} shrink-0 text-muted-foreground`} />
             {!isCollapsed && (
@@ -70,7 +74,9 @@ function SidebarItem({
         return (
             <Tooltip>
                 <TooltipTrigger asChild>{button}</TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
+                <TooltipContent side="right">
+                    {disabled ? `${label} (Select folder first)` : label}
+                </TooltipContent>
             </Tooltip>
         );
     }
@@ -110,17 +116,20 @@ function SidebarContent({
     onCollapseClick: () => void;
 }) {
     const [isHovering, setIsHovering] = React.useState(false);
-    const firstLetter = FOLDER_NAME.charAt(0).toUpperCase();
+    const { projectName, projectPath, selectFolder, isElectron } = useProject();
+    const firstLetter = projectPath ? projectName.charAt(0).toUpperCase() : null;
 
     // Reset hover state when sidebar collapse state changes
     React.useEffect(() => {
         setIsHovering(false);
     }, [isCollapsed]);
 
-    // Header is only clickable when collapsed (to expand)
+    // Handle header click - expand if collapsed, or open folder picker if no project
     const handleHeaderClick = () => {
         if (isCollapsed) {
             onExpandClick();
+        } else if (!projectPath && isElectron) {
+            selectFolder();
         }
     };
 
@@ -146,27 +155,53 @@ function SidebarContent({
                                     >
                                         {isHovering ? (
                                             <PanelLeft className="size-4 text-primary-foreground" />
-                                        ) : (
+                                        ) : firstLetter ? (
                                             <span className="text-sm font-semibold text-primary-foreground">
                                                 {firstLetter}
                                             </span>
+                                        ) : (
+                                            <FolderOpen className="size-4 text-primary-foreground" />
                                         )}
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent side="right">
-                                    Click to expand sidebar
+                                    {projectPath ? "Expand sidebar" : "Select project folder"}
                                 </TooltipContent>
                             </Tooltip>
                         ) : (
                             <>
-                                <div className="size-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                                    <span className="text-sm font-semibold text-primary-foreground">
-                                        {firstLetter}
-                                    </span>
-                                </div>
-                                <span className="text-sm font-semibold text-foreground truncate flex-1">
-                                    {FOLDER_NAME}
-                                </span>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            onClick={isElectron ? selectFolder : undefined}
+                                            className={`size-8 rounded-lg bg-primary flex items-center justify-center shrink-0 ${isElectron ? 'hover:bg-primary/80 cursor-pointer' : ''} transition-colors`}
+                                        >
+                                            {firstLetter ? (
+                                                <span className="text-sm font-semibold text-primary-foreground">
+                                                    {firstLetter}
+                                                </span>
+                                            ) : (
+                                                <FolderOpen className="size-4 text-primary-foreground" />
+                                            )}
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                        {projectPath ? "Change folder" : "Select folder"}
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            onClick={isElectron ? selectFolder : undefined}
+                                            className={`text-sm font-semibold text-foreground truncate flex-1 text-left ${isElectron ? 'hover:text-foreground/80 cursor-pointer' : ''}`}
+                                        >
+                                            {projectName}
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom">
+                                        {projectPath ? `Change folder (${projectPath})` : "Select folder"}
+                                    </TooltipContent>
+                                </Tooltip>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <button
@@ -195,6 +230,7 @@ function SidebarContent({
                             label="New Chat"
                             isCollapsed={isCollapsed}
                             isMainAction={true}
+                            disabled={!projectPath}
                         />
                         <SidebarItem
                             icon={Search}
@@ -206,20 +242,22 @@ function SidebarContent({
                         {/* Chat sections - Only visible when expanded */}
                         {!isCollapsed && (
                             <>
-                                {/* Project Chats Section */}
-                                <div className="mt-4 w-full min-w-0">
-                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
-                                        Project Chats
-                                    </span>
-                                    <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
-                                        {projectChats.map((chat) => (
-                                            <ChatItem
-                                                key={chat.id}
-                                                title={chat.title}
-                                            />
-                                        ))}
+                                {/* Project Chats Section - Only show when project is selected */}
+                                {projectPath && (
+                                    <div className="mt-4 w-full min-w-0">
+                                        <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
+                                            Project Chats
+                                        </span>
+                                        <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
+                                            {projectChats.map((chat) => (
+                                                <ChatItem
+                                                    key={chat.id}
+                                                    title={chat.title}
+                                                />
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* General Chats Section */}
                                 <div className="mt-4 w-full min-w-0">
@@ -277,7 +315,7 @@ export function BuilderSidebar({
 
 // Hook for sidebar state management
 export function useSidebarState() {
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true); // Default to collapsed
 
     // Toggle sidebar between expanded and collapsed
     const toggleSidebar = React.useCallback(() => {

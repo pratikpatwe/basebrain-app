@@ -33,3 +33,19 @@ contextBridge.exposeInMainWorld("electronAuth", {
     // Navigate to a route
     navigate: (route: string) => ipcRenderer.invoke("auth:navigate", route),
 });
+
+// Expose folder API to renderer
+contextBridge.exposeInMainWorld("electronFolder", {
+    // Open folder picker dialog
+    selectFolder: () => ipcRenderer.invoke("folder:select"),
+});
+
+// Expose tools API to renderer
+contextBridge.exposeInMainWorld("electronTools", {
+    // Execute a tool with given arguments
+    execute: (toolName: string, args: Record<string, unknown>, projectPath: string) =>
+        ipcRenderer.invoke("tools:execute", toolName, args, projectPath),
+
+    // Get available tool definitions
+    getDefinitions: () => ipcRenderer.invoke("tools:definitions"),
+});

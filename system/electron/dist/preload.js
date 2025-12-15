@@ -27,3 +27,15 @@ electron_1.contextBridge.exposeInMainWorld("electronAuth", {
     // Navigate to a route
     navigate: (route) => electron_1.ipcRenderer.invoke("auth:navigate", route),
 });
+// Expose folder API to renderer
+electron_1.contextBridge.exposeInMainWorld("electronFolder", {
+    // Open folder picker dialog
+    selectFolder: () => electron_1.ipcRenderer.invoke("folder:select"),
+});
+// Expose tools API to renderer
+electron_1.contextBridge.exposeInMainWorld("electronTools", {
+    // Execute a tool with given arguments
+    execute: (toolName, args, projectPath) => electron_1.ipcRenderer.invoke("tools:execute", toolName, args, projectPath),
+    // Get available tool definitions
+    getDefinitions: () => electron_1.ipcRenderer.invoke("tools:definitions"),
+});

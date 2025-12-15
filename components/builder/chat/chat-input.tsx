@@ -6,15 +6,38 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, ArrowUp, Mic, X, Check } from "lucide-react"
 
-export default function ChatInput() {
+interface ChatInputProps {
+    onSend: (message: string) => void;
+    isLoading?: boolean;
+    isDisabled?: boolean;
+}
+
+export default function ChatInput({ onSend, isLoading = false, isDisabled = false }: ChatInputProps) {
     const [input, setInput] = useState("")
     const [isRecording, setIsRecording] = useState(false)
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        if (input.trim()) {
-            console.log("Submitted:", input)
+        if (input.trim() && !isLoading && !isDisabled) {
+            onSend(input.trim())
             setInput("")
+            // Reset textarea height
+            const textarea = e.currentTarget.querySelector('textarea')
+            if (textarea) {
+                textarea.style.height = 'auto'
+            }
+        }
+    }
+
+    // Handle Ctrl+Enter or Enter to submit
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            if (input.trim() && !isLoading) {
+                onSend(input.trim())
+                setInput("")
+                e.currentTarget.style.height = 'auto'
+            }
         }
     }
 
@@ -72,10 +95,10 @@ export default function ChatInput() {
     }
 
     return (
-        <div className="relative">
-            <form onSubmit={handleSubmit} className="relative">
+        <div className="relative min-w-0">
+            <form onSubmit={handleSubmit} className="relative min-w-0">
                 <div
-                    className="border border-zinc-700 rounded-2xl p-4 relative transition-all duration-500 ease-in-out overflow-hidden"
+                    className="border border-zinc-700 rounded-2xl p-3 sm:p-4 relative transition-all duration-500 ease-in-out overflow-hidden min-w-0"
                     style={{ backgroundColor: "#141415" }}
                 >
                     {isRecording ? (
@@ -103,12 +126,14 @@ export default function ChatInput() {
                             </div>
                         </div>
                     ) : (
-                        <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+                        <div className={`animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ${isDisabled ? 'opacity-50' : ''}`}>
                             <textarea
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Ask a follow-up..."
-                                className="w-full bg-transparent text-gray-300 placeholder-gray-500 resize-none border-none outline-none text-base leading-relaxed min-h-[24px] max-h-32 transition-all duration-200"
+                                onKeyDown={handleKeyDown}
+                                placeholder={isDisabled ? "Select a folder to start chatting..." : "Ask a follow-up..."}
+                                disabled={isLoading || isDisabled}
+                                className="w-full bg-transparent text-gray-300 placeholder-gray-500 resize-none border-none outline-none text-base leading-relaxed min-h-[24px] max-h-32 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                 rows={1}
                                 onInput={(e) => {
                                     const target = e.target as HTMLTextAreaElement
@@ -152,7 +177,7 @@ export default function ChatInput() {
                                 <Button
                                     type="submit"
                                     size="sm"
-                                    disabled={!input.trim()}
+                                    disabled={!input.trim() || isLoading || isDisabled}
                                     className="h-8 w-8 p-0 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg transition-all duration-200 hover:scale-110 disabled:hover:scale-100 shrink-0 cursor-pointer"
                                 >
                                     <ArrowUp className="h-5 w-5" />

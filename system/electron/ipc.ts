@@ -3,7 +3,7 @@
  * Exposes auth functions to the renderer process securely.
  */
 
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain, BrowserWindow, dialog } from "electron";
 import {
     loadSession,
     saveSession,
@@ -60,5 +60,36 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
             return true;
         }
         return false;
+    });
+
+    // Open folder picker dialog
+    ipcMain.handle("folder:select", async () => {
+        const mainWindow = getMainWindow();
+        const result = await dialog.showOpenDialog(mainWindow!, {
+            properties: ["openDirectory"],
+            title: "Select Project Folder",
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+
+        return result.filePaths[0];
+    });
+
+    // ============================================
+    // TOOLS IPC HANDLERS
+    // ============================================
+
+    // Execute a tool
+    ipcMain.handle("tools:execute", async (_, toolName: string, args: Record<string, unknown>, projectPath: string) => {
+        const { executeTool } = await import("./tools");
+        return executeTool(toolName, args, projectPath);
+    });
+
+    // Get available tool definitions
+    ipcMain.handle("tools:definitions", async () => {
+        const { toolDefinitions } = await import("./tools");
+        return toolDefinitions;
     });
 }
