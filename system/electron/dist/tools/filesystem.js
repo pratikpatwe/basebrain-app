@@ -148,6 +148,7 @@ async function readFile(filePath, projectPath, encoding = "utf-8") {
 }
 /**
  * Write/Create a file
+ * Returns line change statistics (added/removed)
  */
 async function writeFile(filePath, content, projectPath) {
     try {
@@ -160,12 +161,47 @@ async function writeFile(filePath, content, projectPath) {
         if (!fs.existsSync(parentDir)) {
             fs.mkdirSync(parentDir, { recursive: true });
         }
+        // Calculate line changes
+        let linesAdded = 0;
+        let linesRemoved = 0;
+        let isNewFile = true;
+        const newLines = content.split('\n');
+        if (fs.existsSync(absolutePath)) {
+            isNewFile = false;
+            const oldContent = fs.readFileSync(absolutePath, 'utf-8');
+            const oldLines = oldContent.split('\n');
+            // Simple diff: count lines added and removed
+            const oldLineCount = oldLines.length;
+            const newLineCount = newLines.length;
+            // Use a simple line-by-line comparison
+            const oldLineSet = new Set(oldLines);
+            const newLineSet = new Set(newLines);
+            // Count lines that are in new but not in old (added)
+            for (const line of newLines) {
+                if (!oldLineSet.has(line)) {
+                    linesAdded++;
+                }
+            }
+            // Count lines that are in old but not in new (removed)
+            for (const line of oldLines) {
+                if (!newLineSet.has(line)) {
+                    linesRemoved++;
+                }
+            }
+        }
+        else {
+            // New file - all lines are additions
+            linesAdded = newLines.length;
+        }
         fs.writeFileSync(absolutePath, content, "utf-8");
         return {
             success: true,
             data: {
                 path: filePath,
-                message: `File ${fs.existsSync(absolutePath) ? 'updated' : 'created'} successfully`
+                message: isNewFile ? 'File created successfully' : 'File updated successfully',
+                linesAdded,
+                linesRemoved,
+                isNewFile
             }
         };
     }

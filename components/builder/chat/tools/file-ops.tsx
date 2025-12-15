@@ -27,7 +27,7 @@ interface ToolCall {
     };
 }
 
-interface ToolExecutionProps {
+interface FileOpsProps {
     toolCalls?: ToolCall[];
     toolResults?: { tool_call_id: string; name: string; result: string }[];
 }
@@ -138,8 +138,39 @@ function formatPath(args: Record<string, unknown>): string {
     return "";
 }
 
-export function ToolExecution({ toolCalls, toolResults }: ToolExecutionProps) {
+// Line changes display component
+function LineChanges({ data }: { data: unknown }): React.ReactNode {
+    if (!data || typeof data !== 'object') return null;
+
+    const { linesAdded, linesRemoved } = data as { linesAdded?: number; linesRemoved?: number };
+
+    // Only show if there are actual changes (> 0)
+    const showAdded = typeof linesAdded === 'number' && linesAdded > 0;
+    const showRemoved = typeof linesRemoved === 'number' && linesRemoved > 0;
+
+    if (!showAdded && !showRemoved) return null;
+
+    return (
+        <div className="flex items-center gap-1.5">
+            {showAdded && (
+                <span className="text-xs font-mono font-medium text-emerald-400">
+                    +{linesAdded}
+                </span>
+            )}
+            {showRemoved && (
+                <span className="text-xs font-mono font-medium text-red-400">
+                    -{linesRemoved}
+                </span>
+            )}
+        </div>
+    );
+}
+
+export function FileOps({ toolCalls, toolResults }: FileOpsProps) {
     if (!toolCalls || toolCalls.length === 0) return null;
+
+    // Debug logging
+    console.log("[FileOps] Rendering with:", { toolCalls: toolCalls.length, toolResults: toolResults?.length });
 
     return (
         <div className="flex flex-col gap-2 mb-3">
@@ -148,6 +179,10 @@ export function ToolExecution({ toolCalls, toolResults }: ToolExecutionProps) {
                 let parsedResult: { success?: boolean; data?: unknown; error?: string } = {};
                 try {
                     parsedResult = result ? JSON.parse(result.result) : {};
+                    // Debug: log the parsed data for write_file
+                    if (toolCall.function.name === "write_file" && parsedResult.data) {
+                        console.log("[FileOps] write_file result:", parsedResult.data);
+                    }
                 } catch {
                     parsedResult = { error: "Failed to parse result" };
                 }
@@ -205,6 +240,7 @@ export function ToolExecution({ toolCalls, toolResults }: ToolExecutionProps) {
                             </div>
 
                             {/* Content - neutral colors */}
+
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-zinc-200">
@@ -223,6 +259,11 @@ export function ToolExecution({ toolCalls, toolResults }: ToolExecutionProps) {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Line changes for file operations */}
+                            {isSuccess && toolCall.function.name === "write_file" && (
+                                <LineChanges data={parsedResult.data} />
+                            )}
 
                             {/* Status text */}
                             {isSuccess && (

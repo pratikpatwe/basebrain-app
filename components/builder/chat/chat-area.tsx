@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ChatInput from "./chat-input";
-import { ToolExecution } from "./tool-execution";
+import { FileOps } from "./tools/file-ops";
 import { User, ChevronDown, ChevronRight, Copy, Check, FolderOpen } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 
@@ -293,6 +293,14 @@ export function ChatArea() {
             let currentToolResults: { tool_call_id: string; result: string }[] = [];
             let fullContent = "";
 
+            // Accumulated tool data - persists across loop iterations
+            let accumulatedToolCalls: ToolCall[] = [];
+            let accumulatedToolResults: { tool_call_id: string; name: string; result: string }[] = [];
+
+            // Accumulated token usage across all API calls
+            let totalPromptTokens = 0;
+            let totalCompletionTokens = 0;
+
             // Tool calling loop
             while (continueLoop) {
                 // Call the API with streaming
@@ -354,11 +362,16 @@ export function ChatArea() {
                                     // Thinking ended
                                 } else if (data.type === "content") {
                                     fullContent += data.content;
-                                    // Update the assistant message with new content
+                                    // Update the assistant message with new content - preserve tool data
                                     setMessages((prev) =>
                                         prev.map((msg) =>
                                             msg.id === assistantMessageId
-                                                ? { ...msg, content: fullContent }
+                                                ? {
+                                                    ...msg,
+                                                    content: fullContent,
+                                                    tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
+                                                    tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
+                                                }
                                                 : msg
                                         )
                                     );
@@ -366,22 +379,40 @@ export function ChatArea() {
                                     toolCalls = data.tool_calls;
                                     hasToolCalls = true;
 
-                                    // Update message with tool calls being executed
+                                    // Accumulate tool calls
+                                    accumulatedToolCalls = [...accumulatedToolCalls, ...toolCalls];
+
+                                    // Update message with accumulated tool calls
                                     setMessages((prev) =>
                                         prev.map((msg) =>
                                             msg.id === assistantMessageId
-                                                ? { ...msg, tool_calls: toolCalls }
+                                                ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
                                                 : msg
                                         )
                                     );
                                 } else if (data.type === "done") {
                                     hasToolCalls = data.hasToolCalls;
 
-                                    // Update with final usage data
+                                    // Accumulate tokens from this API call
+                                    if (data.usage) {
+                                        totalPromptTokens += data.usage.prompt_tokens || 0;
+                                        totalCompletionTokens += data.usage.completion_tokens || 0;
+                                    }
+
+                                    // Update with accumulated usage data - preserve tool data
                                     setMessages((prev) =>
                                         prev.map((msg) =>
                                             msg.id === assistantMessageId
-                                                ? { ...msg, usage: data.usage }
+                                                ? {
+                                                    ...msg,
+                                                    usage: {
+                                                        prompt_tokens: totalPromptTokens,
+                                                        completion_tokens: totalCompletionTokens,
+                                                        total_tokens: totalPromptTokens + totalCompletionTokens
+                                                    },
+                                                    tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
+                                                    tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
+                                                }
                                                 : msg
                                         )
                                     );
@@ -409,11 +440,14 @@ export function ChatArea() {
                         });
                     }
 
-                    // Update message with tool results
+                    // Accumulate tool results
+                    accumulatedToolResults = [...accumulatedToolResults, ...toolResults];
+
+                    // Update message with accumulated tool data
                     setMessages((prev) =>
                         prev.map((msg) =>
                             msg.id === assistantMessageId
-                                ? { ...msg, tool_results: toolResults }
+                                ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
                                 : msg
                         )
                     );
@@ -559,7 +593,7 @@ export function ChatArea() {
 
                                                 {/* Tool execution display */}
                                                 {message.tool_calls && (
-                                                    <ToolExecution
+                                                    <FileOps
                                                         toolCalls={message.tool_calls}
                                                         toolResults={message.tool_results}
                                                     />

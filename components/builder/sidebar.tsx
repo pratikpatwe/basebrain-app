@@ -262,7 +262,7 @@ function SidebarContent({
                                 {/* General Chats Section */}
                                 <div className="mt-4 w-full min-w-0">
                                     <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
-                                        Chats
+                                        Other Chats
                                     </span>
                                     <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
                                         {generalChats.map((chat) => (
