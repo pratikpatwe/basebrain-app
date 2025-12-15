@@ -133,7 +133,7 @@ export default function ChatInput({ onSend, isLoading = false, isDisabled = fals
                                 onKeyDown={handleKeyDown}
                                 placeholder={isDisabled ? "Select a folder to start chatting..." : "Ask a follow-up..."}
                                 disabled={isLoading || isDisabled}
-                                className="w-full bg-transparent text-gray-300 placeholder-gray-500 resize-none border-none outline-none text-base leading-relaxed min-h-[24px] max-h-32 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full bg-transparent text-gray-300 placeholder-gray-500 resize-none border-none outline-none text-base leading-relaxed min-h-[24px] max-h-32 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed scrollbar-slim"
                                 rows={1}
                                 onInput={(e) => {
                                     const target = e.target as HTMLTextAreaElement
