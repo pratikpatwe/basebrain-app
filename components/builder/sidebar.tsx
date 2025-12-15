@@ -84,6 +84,7 @@ function SidebarItem({
 function ChatItem({
     id,
     title,
+    editTitle,
     onClick,
     isActive = false,
     onRename,
@@ -91,13 +92,15 @@ function ChatItem({
 }: {
     id: string;
     title: string;
+    editTitle?: string; // The actual title to edit (without suffixes like project name)
     onClick?: () => void;
     isActive?: boolean;
     onRename?: (id: string, newTitle: string) => void;
     onDelete?: (id: string) => void;
 }) {
+    const actualEditTitle = editTitle ?? title;
     const [isEditing, setIsEditing] = React.useState(false);
-    const [editValue, setEditValue] = React.useState(title);
+    const [editValue, setEditValue] = React.useState(actualEditTitle);
     const inputRef = React.useRef<HTMLInputElement>(null);
 
     // Focus input when editing starts
@@ -109,13 +112,13 @@ function ChatItem({
     }, [isEditing]);
 
     const handleRename = () => {
-        setEditValue(title);
+        setEditValue(actualEditTitle);
         setIsEditing(true);
     };
 
     const handleSubmitRename = () => {
         const trimmed = editValue.trim();
-        if (trimmed && trimmed !== title && onRename) {
+        if (trimmed && trimmed !== actualEditTitle && onRename) {
             onRename(id, trimmed);
         }
         setIsEditing(false);
@@ -127,7 +130,7 @@ function ChatItem({
             handleSubmitRename();
         } else if (e.key === "Escape") {
             setIsEditing(false);
-            setEditValue(title);
+            setEditValue(actualEditTitle);
         }
     };
 
@@ -397,7 +400,8 @@ function SidebarContent({
                                                     <ChatItem
                                                         key={chat.id}
                                                         id={chat.id}
-                                                        title={`${chat.title || "New Chat"} · ${chat.project_name}`}
+                                                        title={`${chat.title || "New Chat"} - ${chat.project_name}`}
+                                                        editTitle={chat.title || "New Chat"}
                                                         onClick={() => selectChatAndProject(chat.id, chat.project_path)}
                                                         onRename={renameChat}
                                                         onDelete={deleteChat}
