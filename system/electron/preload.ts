@@ -132,4 +132,13 @@ contextBridge.exposeInMainWorld("electronDB", {
             chatPanelSize?: number;
         }) => ipcRenderer.invoke("db:appState:save", state),
     },
+
+    // --- Command Execution ---
+    commands: {
+        approve: (commandId: string) => ipcRenderer.invoke("cmd:approve", commandId),
+        reject: (commandId: string) => ipcRenderer.invoke("cmd:reject", commandId),
+        sendInput: (commandId: string, input: string) => ipcRenderer.invoke("cmd:sendInput", commandId, input),
+        terminate: (commandId: string) => ipcRenderer.invoke("cmd:terminate", commandId),
+        getStatus: (commandId: string) => ipcRenderer.invoke("cmd:getStatus", commandId),
+    },
 });

@@ -106,6 +106,30 @@ export interface ElectronDB {
         get: () => Promise<AppState>;
         save: (state: Partial<AppState>) => Promise<boolean>;
     };
+    commands: {
+        approve: (commandId: string) => Promise<CommandResult>;
+        reject: (commandId: string) => Promise<CommandResult>;
+        sendInput: (commandId: string, input: string) => Promise<CommandResult>;
+        terminate: (commandId: string) => Promise<CommandResult>;
+        getStatus: (commandId: string) => Promise<CommandResult>;
+    };
+}
+
+// Command result type
+export interface CommandResult {
+    success: boolean;
+    data?: {
+        commandId: string;
+        command?: string;
+        status?: string;
+        output?: string;
+        exitCode?: number | null;
+        requiresInput?: boolean;
+        inputPrompt?: string;
+        duration?: number;
+        message?: string;
+    };
+    error?: string;
 }
 
 // App state for UI persistence

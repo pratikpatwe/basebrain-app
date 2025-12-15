@@ -232,4 +232,30 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         saveAppState(state);
         return true;
     });
+
+    // --- COMMAND EXECUTION ---
+    ipcMain.handle("cmd:approve", async (_, commandId: string) => {
+        const { approveCommand } = await import("./tools/commands");
+        return approveCommand(commandId);
+    });
+
+    ipcMain.handle("cmd:reject", async (_, commandId: string) => {
+        const { rejectCommand } = await import("./tools/commands");
+        return rejectCommand(commandId);
+    });
+
+    ipcMain.handle("cmd:sendInput", async (_, commandId: string, input: string) => {
+        const { sendInput } = await import("./tools/commands");
+        return sendInput(commandId, input);
+    });
+
+    ipcMain.handle("cmd:terminate", async (_, commandId: string) => {
+        const { terminateCommand } = await import("./tools/commands");
+        return terminateCommand(commandId);
+    });
+
+    ipcMain.handle("cmd:getStatus", async (_, commandId: string) => {
+        const { getCommandStatus } = await import("./tools/commands");
+        return getCommandStatus(commandId);
+    });
 }

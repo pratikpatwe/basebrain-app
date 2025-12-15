@@ -80,4 +80,12 @@ electron_1.contextBridge.exposeInMainWorld("electronDB", {
         get: () => electron_1.ipcRenderer.invoke("db:appState:get"),
         save: (state) => electron_1.ipcRenderer.invoke("db:appState:save", state),
     },
+    // --- Command Execution ---
+    commands: {
+        approve: (commandId) => electron_1.ipcRenderer.invoke("cmd:approve", commandId),
+        reject: (commandId) => electron_1.ipcRenderer.invoke("cmd:reject", commandId),
+        sendInput: (commandId, input) => electron_1.ipcRenderer.invoke("cmd:sendInput", commandId, input),
+        terminate: (commandId) => electron_1.ipcRenderer.invoke("cmd:terminate", commandId),
+        getStatus: (commandId) => electron_1.ipcRenderer.invoke("cmd:getStatus", commandId),
+    },
 });

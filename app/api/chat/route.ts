@@ -30,11 +30,11 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "read_file",
-            description: "Read the contents of a file in the project",
+            description: "Read the contents of a file. Returns the full file content as a string. Use this to understand existing code before making changes.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to the file (relative to project root)" }
+                    path: { type: "string", description: "Relative path to the file, e.g., 'src/index.ts' or 'package.json'" }
                 },
                 required: ["path"]
             }
@@ -44,12 +44,12 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "write_file",
-            description: "Create or overwrite a file with content",
+            description: "Create a new file or completely replace an existing file's content. Parent directories are created automatically. IMPORTANT: Always write the COMPLETE file content, never partial updates.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to the file (relative to project root)" },
-                    content: { type: "string", description: "Content to write to the file" }
+                    path: { type: "string", description: "Relative path for the file, e.g., 'src/components/Button.tsx'" },
+                    content: { type: "string", description: "The complete file content to write" }
                 },
                 required: ["path", "content"]
             }
@@ -59,12 +59,12 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "list_folder",
-            description: "List contents of a folder in the project",
+            description: "List all files and folders in a directory. Returns a JSON array with name, type (file/folder), and size. Use '.' to list the project root.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to the folder (use '.' for project root)" },
-                    recursive: { type: "boolean", description: "Include subfolders recursively" }
+                    path: { type: "string", description: "Relative path to folder. Use '.' for project root, 'src' for src folder" },
+                    recursive: { type: "boolean", description: "If true, includes all nested files/folders. Default: false" }
                 },
                 required: ["path"]
             }
@@ -74,11 +74,11 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "create_folder",
-            description: "Create a new folder in the project",
+            description: "Create a new folder. Parent directories are created automatically if needed.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path for the new folder" }
+                    path: { type: "string", description: "Relative path for the new folder, e.g., 'src/components'" }
                 },
                 required: ["path"]
             }
@@ -88,11 +88,11 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "delete_file",
-            description: "Delete a file from the project",
+            description: "Permanently delete a file. Use with caution.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to the file to delete" }
+                    path: { type: "string", description: "Relative path to the file to delete" }
                 },
                 required: ["path"]
             }
@@ -102,11 +102,11 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "delete_folder",
-            description: "Delete a folder and all its contents",
+            description: "Permanently delete a folder and ALL its contents. Use with extreme caution.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to the folder to delete" }
+                    path: { type: "string", description: "Relative path to the folder to delete" }
                 },
                 required: ["path"]
             }
@@ -116,12 +116,12 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "search_files",
-            description: "Search for files matching a pattern in the project",
+            description: "Search for files by name pattern. Uses glob patterns. Examples: '*.ts' (all TypeScript files), '**/*.tsx' (all TSX files recursively), 'src/**/*.css' (all CSS in src).",
             parameters: {
                 type: "object",
                 properties: {
-                    pattern: { type: "string", description: "Search pattern (supports * wildcard)" },
-                    maxDepth: { type: "number", description: "Maximum folder depth to search" }
+                    pattern: { type: "string", description: "Glob pattern like '*.ts', '**/*.json', or 'src/**/*.tsx'" },
+                    maxDepth: { type: "number", description: "Maximum folder depth to search. Omit for unlimited." }
                 },
                 required: ["pattern"]
             }
@@ -131,11 +131,11 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "get_info",
-            description: "Get detailed information about a file or folder",
+            description: "Get metadata about a file or folder: size, created date, modified date, type.",
             parameters: {
                 type: "object",
                 properties: {
-                    path: { type: "string", description: "Path to get info for" }
+                    path: { type: "string", description: "Relative path to the file or folder" }
                 },
                 required: ["path"]
             }
@@ -145,12 +145,12 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "copy_file",
-            description: "Copy a file to a new location",
+            description: "Copy a file to a new location. Creates destination directories if needed.",
             parameters: {
                 type: "object",
                 properties: {
-                    source: { type: "string", description: "Source file path" },
-                    destination: { type: "string", description: "Destination file path" }
+                    source: { type: "string", description: "Relative path to source file" },
+                    destination: { type: "string", description: "Relative path for the copy" }
                 },
                 required: ["source", "destination"]
             }
@@ -160,67 +160,108 @@ const TOOL_DEFINITIONS = [
         type: "function" as const,
         function: {
             name: "move_file",
-            description: "Move or rename a file",
+            description: "Move or rename a file.",
             parameters: {
                 type: "object",
                 properties: {
-                    source: { type: "string", description: "Current file path" },
-                    destination: { type: "string", description: "New file path" }
+                    source: { type: "string", description: "Current relative path" },
+                    destination: { type: "string", description: "New relative path" }
                 },
                 required: ["source", "destination"]
+            }
+        }
+    },
+    {
+        type: "function" as const,
+        function: {
+            name: "run_command",
+            description: "Execute a shell command. REQUIRES USER APPROVAL before running. Use for: npm install, npm run dev, npm run build, npx create-next-app, git commands, etc. The command runs in the project directory.",
+            parameters: {
+                type: "object",
+                properties: {
+                    command: { type: "string", description: "Shell command to run, e.g., 'npm install lodash' or 'npx create-next-app@latest . --yes'" },
+                    description: { type: "string", description: "One-line explanation of what this command does" }
+                },
+                required: ["command", "description"]
             }
         }
     }
 ];
 
-// System prompt for ReAct agent with tools and thinking
-const REACT_SYSTEM_PROMPT = `You are BaseBrain, an expert AI coding assistant with access to file system tools.
 
-## CRITICAL: TOOL USAGE RULES
-You have been given FUNCTION CALLING capabilities. When you need to perform file operations:
-- You MUST use the actual function calling mechanism provided by the API
-- NEVER output tool calls as text like "<search_files>" or "<read_file>" - this does NOT work
-- NEVER write XML or JSON representations of tool calls in your response
-- Simply CALL the tools directly using the function calling feature
-- The tools are: read_file, write_file, list_folder, create_folder, delete_file, delete_folder, search_files, get_info, copy_file, move_file
+// System prompt for autonomous coding agent
+const REACT_SYSTEM_PROMPT = `You are BaseBrain, an AUTONOMOUS AI coding agent. You DON'T just explain - you TAKE ACTION.
 
-## WHEN TO USE TOOLS (MANDATORY)
-You MUST use tools when the user asks you to:
-- View, read, or examine any file → use read_file
-- Create, write, modify, or update any file → use write_file  
-- List, show, or explore folder contents → use list_folder
-- Search or find files → use search_files
-- Create new folders → use create_folder
-- Delete files or folders → use delete_file or delete_folder
-- Get file info → use get_info
-- Copy or move files → use copy_file or move_file
+## CORE IDENTITY
+You are a hands-on coding assistant that EXECUTES tasks using tools. When asked to do something:
+- DON'T describe what you would do → DO IT with tools
+- DON'T show code in chat → WRITE IT to files
+- DON'T suggest commands → RUN THEM
 
-DO NOT describe what you would do. DO NOT output fake tool syntax. Actually CALL the tool.
+## AVAILABLE TOOLS
+- read_file: Read file contents
+- write_file: Create or update files (ALWAYS write complete file content)
+- list_folder: List directory contents
+- create_folder: Create directories
+- delete_file, delete_folder: Remove files/folders
+- search_files: Find files by pattern
+- get_info, copy_file, move_file: File operations
+- run_command: Execute shell commands (requires user approval)
+
+## MANDATORY TOOL USAGE
+You MUST use tools for every coding task:
+❌ "I would create a file called..." → ✅ Actually CREATE it with write_file
+❌ "You could run npm install..." → ✅ Actually RUN it with run_command  
+❌ "Here's the code:" → ✅ WRITE the code to the actual file
+
+## CREATING NEW PROJECTS
+When asked to create a new project (Next.js, React, etc.):
+1. FIRST: run_command("npx create-next-app@latest . --yes --typescript --tailwind --eslint --app --src-dir --import-alias @/*", "Initialize Next.js project")
+2. WAIT for command to complete
+3. list_folder(".") to see generated structure
+4. read_file("package.json") to understand dependencies
+5. Make requested modifications with write_file
+6. Run any additional setup commands
+
+## MODIFYING EXISTING PROJECTS  
+1. FIRST: list_folder(".") to understand structure
+2. read_file on relevant files to understand existing code
+3. write_file to make changes (write COMPLETE file, not snippets)
+4. run_command if builds/tests are needed
+
+## WRITE COMPLETE FILES
+When using write_file, you MUST:
+- Write the ENTIRE file content from start to finish
+- Include ALL imports at the top
+- Never use "..." or "// rest of code" 
+- Never truncate or abbreviate
+- Write production-ready, complete code
+
+## ERROR RECOVERY
+If a tool call fails:
+- Read the error message carefully
+- Adjust your approach based on the error
+- Try again with corrected parameters
+- For command failures, analyze output and fix the issue
 
 ## RESPONSE FORMAT
 <THINKING>
-Brief analysis of the task and your plan
+Quick analysis of what needs to be done
 </THINKING>
 
 <ANSWER>
-Your response to the user explaining what you did/found
+Brief summary of what you did
 </ANSWER>
 
 ## CODING STANDARDS
-When writing code:
-1. Write production-quality, complete code
-2. Never use placeholders like "// TODO"
-3. Include all imports and handle errors
-4. Match the project's existing style
-5. Use TypeScript types properly
+- Write TypeScript with proper types
+- Include error handling
+- Follow project conventions (check existing files first)
+- Use modern best practices
+- Complete, runnable code only
 
-## WORKFLOW
-1. EXPLORE: Use list_folder to understand project structure
-2. READ: Use read_file to examine existing code
-3. IMPLEMENT: Use write_file to create/modify files  
-4. EXPLAIN: Tell the user what you changed
+REMEMBER: You are an AGENT that ACTS. Every request should result in real file changes or command execution, not just explanations.`;
 
-Remember: CALL tools directly. Do not write fake tool syntax in your response.`;
 
 export async function POST(request: NextRequest) {
     try {
@@ -289,9 +330,9 @@ REMEMBER:
         const enableTools = !!projectPath;
 
         // Call Groq API with streaming and tools
-        // Using lower temperature for more consistent, focused code generation
+        // Using llama-3.3-70b for better function calling support
         const stream = await groq.chat.completions.create({
-            model: "moonshotai/kimi-k2-instruct-0905",
+            model: "llama-3.3-70b-versatile",
             messages: apiMessages as Groq.Chat.Completions.ChatCompletionMessageParam[],
             temperature: 0.3, // Lower temperature for more precise, consistent code
             max_tokens: 8192, // Increased for longer code responses

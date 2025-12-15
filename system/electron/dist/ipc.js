@@ -216,4 +216,25 @@ function registerIpcHandlers(getMainWindow) {
         saveAppState(state);
         return true;
     });
+    // --- COMMAND EXECUTION ---
+    electron_1.ipcMain.handle("cmd:approve", async (_, commandId) => {
+        const { approveCommand } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
+        return approveCommand(commandId);
+    });
+    electron_1.ipcMain.handle("cmd:reject", async (_, commandId) => {
+        const { rejectCommand } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
+        return rejectCommand(commandId);
+    });
+    electron_1.ipcMain.handle("cmd:sendInput", async (_, commandId, input) => {
+        const { sendInput } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
+        return sendInput(commandId, input);
+    });
+    electron_1.ipcMain.handle("cmd:terminate", async (_, commandId) => {
+        const { terminateCommand } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
+        return terminateCommand(commandId);
+    });
+    electron_1.ipcMain.handle("cmd:getStatus", async (_, commandId) => {
+        const { getCommandStatus } = await Promise.resolve().then(() => __importStar(require("./tools/commands")));
+        return getCommandStatus(commandId);
+    });
 }

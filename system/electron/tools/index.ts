@@ -3,6 +3,7 @@
  */
 
 export * from "./filesystem";
+export * from "./commands";
 
 // Export tool executor function
 import {
@@ -25,7 +26,19 @@ import {
     ToolResult
 } from "./filesystem";
 
-export { toolDefinitions };
+import {
+    prepareCommand,
+    approveCommand,
+    rejectCommand,
+    sendInput,
+    terminateCommand,
+    getCommandStatus,
+    commandToolDefinitions
+} from "./commands";
+
+// Merge all tool definitions
+export const allToolDefinitions = [...toolDefinitions, ...commandToolDefinitions];
+export { toolDefinitions, commandToolDefinitions };
 
 /**
  * Execute a tool by name with given arguments
@@ -84,7 +97,24 @@ export async function executeTool(
         case "get_system_info":
             return getSystemInfo();
 
+        // Command tools
+        case "run_command":
+            return prepareCommand(args.command as string, projectPath);
+
+        case "check_command_status":
+            return getCommandStatus(args.commandId as string);
+
+        case "send_command_input":
+            return sendInput(args.commandId as string, args.input as string);
+
+        case "terminate_command":
+            return terminateCommand(args.commandId as string);
+
         default:
             return { success: false, error: `Unknown tool: ${toolName}` };
     }
 }
+
+// Export command control functions for IPC
+export { approveCommand, rejectCommand, sendInput, terminateCommand, getCommandStatus };
+

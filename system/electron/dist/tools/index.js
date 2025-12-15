@@ -17,12 +17,22 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.toolDefinitions = void 0;
+exports.getCommandStatus = exports.terminateCommand = exports.sendInput = exports.rejectCommand = exports.approveCommand = exports.commandToolDefinitions = exports.toolDefinitions = exports.allToolDefinitions = void 0;
 exports.executeTool = executeTool;
 __exportStar(require("./filesystem"), exports);
+__exportStar(require("./commands"), exports);
 // Export tool executor function
 const filesystem_1 = require("./filesystem");
 Object.defineProperty(exports, "toolDefinitions", { enumerable: true, get: function () { return filesystem_1.toolDefinitions; } });
+const commands_1 = require("./commands");
+Object.defineProperty(exports, "approveCommand", { enumerable: true, get: function () { return commands_1.approveCommand; } });
+Object.defineProperty(exports, "rejectCommand", { enumerable: true, get: function () { return commands_1.rejectCommand; } });
+Object.defineProperty(exports, "sendInput", { enumerable: true, get: function () { return commands_1.sendInput; } });
+Object.defineProperty(exports, "terminateCommand", { enumerable: true, get: function () { return commands_1.terminateCommand; } });
+Object.defineProperty(exports, "getCommandStatus", { enumerable: true, get: function () { return commands_1.getCommandStatus; } });
+Object.defineProperty(exports, "commandToolDefinitions", { enumerable: true, get: function () { return commands_1.commandToolDefinitions; } });
+// Merge all tool definitions
+exports.allToolDefinitions = [...filesystem_1.toolDefinitions, ...commands_1.commandToolDefinitions];
 /**
  * Execute a tool by name with given arguments
  */
@@ -61,6 +71,15 @@ async function executeTool(toolName, args, projectPath) {
             });
         case "get_system_info":
             return (0, filesystem_1.getSystemInfo)();
+        // Command tools
+        case "run_command":
+            return (0, commands_1.prepareCommand)(args.command, projectPath);
+        case "check_command_status":
+            return (0, commands_1.getCommandStatus)(args.commandId);
+        case "send_command_input":
+            return (0, commands_1.sendInput)(args.commandId, args.input);
+        case "terminate_command":
+            return (0, commands_1.terminateCommand)(args.commandId);
         default:
             return { success: false, error: `Unknown tool: ${toolName}` };
     }

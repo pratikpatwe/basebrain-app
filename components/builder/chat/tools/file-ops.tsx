@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     FileText,
     FolderOpen,
@@ -14,7 +15,13 @@ import {
     XCircle,
     Loader2,
     FileCode,
-    FolderTree
+    FolderTree,
+    Terminal,
+    Check,
+    X,
+    Square,
+    ChevronDown,
+    ChevronUp
 } from "lucide-react";
 
 // Tool call type
@@ -27,9 +34,20 @@ interface ToolCall {
     };
 }
 
+interface CommandState {
+    commandId: string;
+    status: "pending" | "approved" | "running" | "completed" | "failed" | "terminated" | "rejected";
+    output: string;
+    exitCode: number | null;
+}
+
 interface FileOpsProps {
     toolCalls?: ToolCall[];
     toolResults?: { tool_call_id: string; name: string; result: string }[];
+    commandStates?: Map<string, CommandState>;
+    onApproveCommand?: (commandId: string) => void;
+    onRejectCommand?: (commandId: string) => void;
+    onTerminateCommand?: (commandId: string) => void;
 }
 
 // Get icon and color for each tool type
@@ -38,7 +56,6 @@ function getToolVisuals(toolName: string): {
     label: string;
     bgColor: string;
     iconColor: string;
-    borderColor: string;
 } {
     switch (toolName) {
         case "read_file":
@@ -47,7 +64,6 @@ function getToolVisuals(toolName: string): {
                 label: "Reading file",
                 bgColor: "bg-blue-500/10",
                 iconColor: "text-blue-400",
-                borderColor: "border-blue-500/20"
             };
         case "write_file":
             return {
@@ -55,7 +71,6 @@ function getToolVisuals(toolName: string): {
                 label: "Writing file",
                 bgColor: "bg-emerald-500/10",
                 iconColor: "text-emerald-400",
-                borderColor: "border-emerald-500/20"
             };
         case "list_folder":
             return {
@@ -63,7 +78,6 @@ function getToolVisuals(toolName: string): {
                 label: "Listing folder",
                 bgColor: "bg-amber-500/10",
                 iconColor: "text-amber-400",
-                borderColor: "border-amber-500/20"
             };
         case "create_folder":
             return {
@@ -71,7 +85,6 @@ function getToolVisuals(toolName: string): {
                 label: "Creating folder",
                 bgColor: "bg-violet-500/10",
                 iconColor: "text-violet-400",
-                borderColor: "border-violet-500/20"
             };
         case "delete_file":
         case "delete_folder":
@@ -80,7 +93,6 @@ function getToolVisuals(toolName: string): {
                 label: toolName === "delete_file" ? "Deleting file" : "Deleting folder",
                 bgColor: "bg-red-500/10",
                 iconColor: "text-red-400",
-                borderColor: "border-red-500/20"
             };
         case "copy_file":
         case "copy_folder":
@@ -89,7 +101,6 @@ function getToolVisuals(toolName: string): {
                 label: toolName === "copy_file" ? "Copying file" : "Copying folder",
                 bgColor: "bg-cyan-500/10",
                 iconColor: "text-cyan-400",
-                borderColor: "border-cyan-500/20"
             };
         case "move_file":
         case "move_folder":
@@ -98,7 +109,6 @@ function getToolVisuals(toolName: string): {
                 label: toolName === "move_file" ? "Moving file" : "Moving folder",
                 bgColor: "bg-orange-500/10",
                 iconColor: "text-orange-400",
-                borderColor: "border-orange-500/20"
             };
         case "search_files":
             return {
@@ -106,7 +116,6 @@ function getToolVisuals(toolName: string): {
                 label: "Searching files",
                 bgColor: "bg-pink-500/10",
                 iconColor: "text-pink-400",
-                borderColor: "border-pink-500/20"
             };
         case "get_info":
         case "exists":
@@ -115,7 +124,13 @@ function getToolVisuals(toolName: string): {
                 label: toolName === "get_info" ? "Getting info" : "Checking path",
                 bgColor: "bg-indigo-500/10",
                 iconColor: "text-indigo-400",
-                borderColor: "border-indigo-500/20"
+            };
+        case "run_command":
+            return {
+                icon: Terminal,
+                label: "Running command",
+                bgColor: "bg-zinc-500/10",
+                iconColor: "text-zinc-400",
             };
         default:
             return {
@@ -123,7 +138,6 @@ function getToolVisuals(toolName: string): {
                 label: "Executing",
                 bgColor: "bg-zinc-500/10",
                 iconColor: "text-zinc-400",
-                borderColor: "border-zinc-500/20"
             };
     }
 }
@@ -135,6 +149,7 @@ function formatPath(args: Record<string, unknown>): string {
         return `${args.source} → ${args.destination}`;
     }
     if (args.pattern) return `"${args.pattern}"`;
+    if (args.command) return String(args.command);
     return "";
 }
 
@@ -144,7 +159,6 @@ function LineChanges({ data }: { data: unknown }): React.ReactNode {
 
     const { linesAdded, linesRemoved } = data as { linesAdded?: number; linesRemoved?: number };
 
-    // Only show if there are actual changes (> 0)
     const showAdded = typeof linesAdded === 'number' && linesAdded > 0;
     const showRemoved = typeof linesRemoved === 'number' && linesRemoved > 0;
 
@@ -166,13 +180,228 @@ function LineChanges({ data }: { data: unknown }): React.ReactNode {
     );
 }
 
-export function FileOps({ toolCalls, toolResults }: FileOpsProps) {
+// Inline command display component
+function InlineCommand({
+    toolCall,
+    result,
+    commandState,
+    onApprove,
+    onReject,
+    onTerminate,
+}: {
+    toolCall: ToolCall;
+    result?: { tool_call_id: string; name: string; result: string };
+    commandState?: CommandState;
+    onApprove?: () => void;
+    onReject?: () => void;
+    onTerminate?: () => void;
+}) {
+    const [isExpanded, setIsExpanded] = useState(true);
+    const outputRef = useRef<HTMLPreElement>(null);
+
+    let args: Record<string, unknown> = {};
+    try {
+        args = JSON.parse(toolCall.function.arguments);
+    } catch {
+        args = {};
+    }
+
+    const command = String(args.command || "");
+    const description = String(args.description || "");
+
+    // Determine status from commandState or result
+    let status: CommandState["status"] = "pending";
+    let output = "";
+    let exitCode: number | null = null;
+
+    if (commandState) {
+        status = commandState.status;
+        output = commandState.output;
+        exitCode = commandState.exitCode;
+    } else if (result) {
+        try {
+            const parsed = JSON.parse(result.result);
+            if (parsed.success) {
+                status = "completed";
+                output = parsed.data?.output || "";
+                exitCode = parsed.data?.exitCode ?? null;
+            } else if (parsed.error?.includes("rejected") || parsed.error?.includes("denied")) {
+                status = "rejected";
+            } else {
+                status = "failed";
+            }
+        } catch {
+            status = "pending";
+        }
+    }
+
+    // Auto-scroll output
+    useEffect(() => {
+        if (outputRef.current) {
+            outputRef.current.scrollTop = outputRef.current.scrollHeight;
+        }
+    }, [output]);
+
+    const isPending = status === "pending";
+    const isRunning = status === "running" || status === "approved";
+    const isFinished = ["completed", "failed", "terminated", "rejected"].includes(status);
+
+    // Get last 5 lines for preview
+    const getOutputPreview = () => {
+        if (!output) return "";
+        const lines = output.trim().split("\n");
+        return lines.slice(-5).join("\n");
+    };
+
+    return (
+        <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 overflow-hidden">
+            {/* Header */}
+            <div
+                className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-zinc-700/30 transition-colors"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-700/50 flex items-center justify-center shrink-0">
+                        {isPending && <Terminal className="h-4 w-4 text-zinc-400" />}
+                        {isRunning && <Loader2 className="h-4 w-4 text-zinc-400 animate-spin" />}
+                        {status === "completed" && <Check className="h-4 w-4 text-emerald-400" />}
+                        {(status === "failed" || status === "terminated") && <X className="h-4 w-4 text-red-400" />}
+                        {status === "rejected" && <X className="h-4 w-4 text-zinc-500" />}
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+                        <code className="text-sm text-zinc-200 font-mono truncate">
+                            {command}
+                        </code>
+                        {description && (
+                            <span className="text-xs text-zinc-500 truncate">
+                                {description}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                    {isRunning && onTerminate && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onTerminate(); }}
+                            className="h-6 w-6 flex items-center justify-center rounded text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            title="Stop"
+                        >
+                            <Square className="h-3 w-3 fill-current" />
+                        </button>
+                    )}
+                    <div className="h-6 w-6 flex items-center justify-center text-zinc-600">
+                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </div>
+                </div>
+            </div>
+
+            {/* Collapsed preview */}
+            {!isExpanded && output && !isPending && (
+                <div className="border-t border-zinc-700/50">
+                    <pre className="px-3 py-2 text-xs font-mono text-zinc-500 bg-black/20 whitespace-pre-wrap break-all leading-relaxed max-h-20 overflow-hidden">
+                        {getOutputPreview()}
+                    </pre>
+                </div>
+            )}
+
+            {/* Expanded content */}
+            {isExpanded && (
+                <>
+                    {/* Pending approval */}
+                    {isPending && onApprove && onReject && (
+                        <div className="px-3 py-2.5 border-t border-zinc-700/50 flex items-center justify-between bg-zinc-800/50">
+                            <span className="text-xs text-zinc-400">
+                                Allow this command?
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={onReject}
+                                    className="h-7 px-3 flex items-center gap-1.5 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors cursor-pointer"
+                                >
+                                    <X className="h-3 w-3" />
+                                    Deny
+                                </button>
+                                <button
+                                    onClick={onApprove}
+                                    className="h-7 px-3 flex items-center gap-1.5 rounded text-xs font-medium bg-zinc-100 hover:bg-white text-zinc-900 transition-colors cursor-pointer"
+                                >
+                                    <Check className="h-3 w-3" />
+                                    Allow
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Output */}
+                    {(output || isRunning) && (
+                        <pre
+                            ref={outputRef}
+                            className="px-3 py-2.5 text-xs font-mono text-zinc-400 bg-black/30 border-t border-zinc-700/50 max-h-48 overflow-auto scrollbar-slim whitespace-pre-wrap break-all leading-relaxed"
+                        >
+                            {output || (isRunning ? "Running..." : "")}
+                        </pre>
+                    )}
+
+                    {/* Status footer */}
+                    {isFinished && (
+                        <div className="px-3 py-2 border-t border-zinc-700/50 flex items-center justify-between bg-zinc-800/30">
+                            <span className="text-xs text-zinc-500">
+                                {status === "completed" && "Completed"}
+                                {status === "failed" && `Failed (exit ${exitCode})`}
+                                {status === "terminated" && "Stopped"}
+                                {status === "rejected" && "Denied"}
+                            </span>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+export function FileOps({
+    toolCalls,
+    toolResults,
+    commandStates,
+    onApproveCommand,
+    onRejectCommand,
+    onTerminateCommand,
+}: FileOpsProps) {
     if (!toolCalls || toolCalls.length === 0) return null;
 
     return (
         <div className="flex flex-col gap-2 mb-3">
             {toolCalls.map((toolCall) => {
                 const result = toolResults?.find(r => r.tool_call_id === toolCall.id);
+
+                // Special handling for run_command
+                if (toolCall.function.name === "run_command") {
+                    let commandId = "";
+                    try {
+                        if (result) {
+                            const parsed = JSON.parse(result.result);
+                            commandId = parsed.data?.commandId || "";
+                        }
+                    } catch {
+                        // ignore
+                    }
+
+                    const commandState = commandId ? commandStates?.get(commandId) : undefined;
+
+                    return (
+                        <InlineCommand
+                            key={toolCall.id}
+                            toolCall={toolCall}
+                            result={result}
+                            commandState={commandState}
+                            onApprove={commandId ? () => onApproveCommand?.(commandId) : undefined}
+                            onReject={commandId ? () => onRejectCommand?.(commandId) : undefined}
+                            onTerminate={commandId ? () => onTerminateCommand?.(commandId) : undefined}
+                        />
+                    );
+                }
+
+                // Regular file operations
                 let parsedResult: { success?: boolean; data?: unknown; error?: string } = {};
                 try {
                     parsedResult = result ? JSON.parse(result.result) : {};
@@ -233,7 +462,6 @@ export function FileOps({ toolCalls, toolResults }: FileOpsProps) {
                             </div>
 
                             {/* Content - neutral colors */}
-
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-zinc-200">

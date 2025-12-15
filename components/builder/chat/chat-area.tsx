@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -19,6 +19,14 @@ interface ToolCall {
         name: string;
         arguments: string;
     };
+}
+
+// Command state for inline display
+interface CommandState {
+    commandId: string;
+    status: "pending" | "running" | "completed" | "failed" | "terminated" | "rejected";
+    output: string;
+    exitCode: number | null;
 }
 
 // Message type
@@ -225,6 +233,7 @@ function ThinkingDropdown({ thinking, isStreaming }: { thinking: string; isStrea
 export function ChatArea() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [commandStates, setCommandStates] = useState<Map<string, CommandState>>(new Map());
     const scrollRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const {
@@ -236,6 +245,95 @@ export function ChatArea() {
         createNewChat,
         refreshChats,
     } = useProject();
+
+    // Poll for command status updates
+    const pollCommandStatus = useCallback(async (commandId: string) => {
+        if (!window.electronDB) return;
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const result = await window.electronDB!.commands.getStatus(commandId);
+
+                if (result.success && result.data) {
+                    const status = result.data.status as CommandState["status"];
+
+                    setCommandStates(prev => {
+                        const next = new Map(prev);
+                        next.set(commandId, {
+                            commandId,
+                            status,
+                            output: result.data?.output || "",
+                            exitCode: result.data?.exitCode ?? null,
+                        });
+                        return next;
+                    });
+
+                    // Stop polling if command is finished
+                    if (["completed", "failed", "terminated", "rejected"].includes(status)) {
+                        clearInterval(pollInterval);
+                    }
+                }
+            } catch (error) {
+                console.error("[Chat] Error polling command status:", error);
+                clearInterval(pollInterval);
+            }
+        }, 500);
+
+        // Return cleanup function
+        return () => clearInterval(pollInterval);
+    }, []);
+
+    // Command handlers
+    const handleApproveCommand = useCallback(async (commandId: string) => {
+        if (!window.electronDB) return;
+
+        // Update state to show running
+        setCommandStates(prev => {
+            const next = new Map(prev);
+            const current = next.get(commandId);
+            if (current) {
+                next.set(commandId, { ...current, status: "running" });
+            }
+            return next;
+        });
+
+        // Start polling for status updates
+        pollCommandStatus(commandId);
+
+        // Fire and forget - the polling will handle updates
+        window.electronDB.commands.approve(commandId);
+    }, [pollCommandStatus]);
+
+    const handleRejectCommand = useCallback(async (commandId: string) => {
+        if (!window.electronDB) return;
+
+        await window.electronDB.commands.reject(commandId);
+
+        setCommandStates(prev => {
+            const next = new Map(prev);
+            const current = next.get(commandId);
+            if (current) {
+                next.set(commandId, { ...current, status: "rejected" });
+            }
+            return next;
+        });
+    }, []);
+
+    const handleTerminateCommand = useCallback(async (commandId: string) => {
+        if (!window.electronDB) return;
+
+        await window.electronDB.commands.terminate(commandId);
+
+        setCommandStates(prev => {
+            const next = new Map(prev);
+            const current = next.get(commandId);
+            if (current) {
+                next.set(commandId, { ...current, status: "terminated" });
+            }
+            return next;
+        });
+    }, []);
+
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -635,12 +733,57 @@ export function ChatArea() {
 
                     for (const toolCall of toolCalls) {
                         const args = JSON.parse(toolCall.function.arguments);
-                        const result = await executeTool(toolCall.function.name, args);
-                        toolResults.push({
-                            tool_call_id: toolCall.id,
-                            name: toolCall.function.name,
-                            result
-                        });
+
+                        // Special handling for run_command - needs user approval
+                        if (toolCall.function.name === "run_command") {
+                            // Check if there's already a pending or running command
+                            const hasActiveCommand = Array.from(commandStates.values()).some(cmd =>
+                                cmd.status === "pending" || cmd.status === "running"
+                            );
+
+                            if (hasActiveCommand) {
+                                // Block new command - tell AI to wait
+                                toolResults.push({
+                                    tool_call_id: toolCall.id,
+                                    name: toolCall.function.name,
+                                    result: JSON.stringify({
+                                        success: false,
+                                        error: "A command is already pending or running. Please wait for user to approve/reject or for the current command to complete before running another command."
+                                    })
+                                });
+                                continue;
+                            }
+
+                            const result = await executeTool(toolCall.function.name, args);
+                            const resultData = JSON.parse(result);
+
+                            if (resultData.success && resultData.data?.commandId) {
+                                // Add to command states for inline UI display
+                                setCommandStates(prev => {
+                                    const next = new Map(prev);
+                                    next.set(resultData.data.commandId, {
+                                        commandId: resultData.data.commandId,
+                                        status: "pending",
+                                        output: "",
+                                        exitCode: null,
+                                    });
+                                    return next;
+                                });
+                            }
+
+                            toolResults.push({
+                                tool_call_id: toolCall.id,
+                                name: toolCall.function.name,
+                                result
+                            });
+                        } else {
+                            const result = await executeTool(toolCall.function.name, args);
+                            toolResults.push({
+                                tool_call_id: toolCall.id,
+                                name: toolCall.function.name,
+                                result
+                            });
+                        }
                     }
 
                     // Accumulate tool results
@@ -858,6 +1001,10 @@ export function ChatArea() {
                                                     <FileOps
                                                         toolCalls={message.tool_calls}
                                                         toolResults={message.tool_results}
+                                                        commandStates={commandStates}
+                                                        onApproveCommand={handleApproveCommand}
+                                                        onRejectCommand={handleRejectCommand}
+                                                        onTerminateCommand={handleTerminateCommand}
                                                     />
                                                 )}
 
@@ -890,7 +1037,7 @@ export function ChatArea() {
             </div>
 
             {/* Chat Input - Fixed at bottom, centered with max-width */}
-            <div className="shrink-0 w-full flex justify-center pb-2 px-2 min-w-0">
+            <div className="shrink-0 w-full flex flex-col items-center pb-2 px-2 min-w-0">
                 <div className="w-full max-w-xl min-w-0">
                     <ChatInput
                         onSend={handleSendMessage}
