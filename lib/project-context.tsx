@@ -25,6 +25,7 @@ interface ProjectContextType {
     createNewChat: () => Promise<Chat | null>;
     selectChat: (chatId: string) => Promise<void>;
     selectChatAndProject: (chatId: string, projectPath: string) => Promise<void>;
+    renameChat: (chatId: string, newTitle: string) => Promise<void>;
     deleteChat: (chatId: string) => Promise<void>;
     refreshChats: () => Promise<void>;
 }
@@ -43,6 +44,7 @@ const ProjectContext = createContext<ProjectContextType>({
     createNewChat: async () => null,
     selectChat: async () => { },
     selectChatAndProject: async () => { },
+    renameChat: async () => { },
     deleteChat: async () => { },
     refreshChats: async () => { },
 });
@@ -283,6 +285,19 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         }
     }, [currentChatId, refreshChats]);
 
+    // Rename a chat
+    const renameChat = useCallback(async (chatId: string, newTitle: string) => {
+        if (!window.electronDB) return;
+
+        try {
+            await window.electronDB.chats.updateTitle(chatId, newTitle);
+            // Refresh chats list to show updated title
+            await refreshChats();
+        } catch (error) {
+            console.error("[ProjectContext] Error renaming chat:", error);
+        }
+    }, [refreshChats]);
+
     return (
         <ProjectContext.Provider
             value={{
@@ -298,6 +313,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
                 createNewChat,
                 selectChat,
                 selectChatAndProject,
+                renameChat,
                 deleteChat,
                 refreshChats,
             }}

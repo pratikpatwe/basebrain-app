@@ -4,15 +4,16 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, ArrowUp, Mic, X, Check } from "lucide-react"
+import { Plus, ArrowUp, Mic, X, Check, Square } from "lucide-react"
 
 interface ChatInputProps {
     onSend: (message: string) => void;
+    onStop?: () => void;
     isLoading?: boolean;
     isDisabled?: boolean;
 }
 
-export default function ChatInput({ onSend, isLoading = false, isDisabled = false }: ChatInputProps) {
+export default function ChatInput({ onSend, onStop, isLoading = false, isDisabled = false }: ChatInputProps) {
     const [input, setInput] = useState("")
     const [isRecording, setIsRecording] = useState(false)
 
@@ -143,12 +144,13 @@ export default function ChatInput({ onSend, isLoading = false, isDisabled = fals
                             />
 
                             <div className="flex items-center justify-between mt-4 gap-2 flex-wrap">
-                                <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                                <div className={`flex items-center gap-1 sm:gap-2 flex-wrap ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        className="h-8 w-8 p-0 text-white hover:text-white hover:bg-zinc-700 rounded-lg transition-all duration-200 hover:scale-110 cursor-pointer"
+                                        disabled={isLoading}
+                                        className="h-8 w-8 p-0 text-white hover:text-white hover:bg-zinc-700 rounded-lg transition-all duration-200 hover:scale-110 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                     >
                                         <Plus className="h-5 w-5" />
                                     </Button>
@@ -158,7 +160,8 @@ export default function ChatInput({ onSend, isLoading = false, isDisabled = fals
                                         variant="ghost"
                                         size="sm"
                                         onClick={handleMicClick}
-                                        className="h-8 w-8 p-0 text-white hover:text-white hover:bg-zinc-700 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 active:bg-red-600/20 active:text-red-400 cursor-pointer"
+                                        disabled={isLoading}
+                                        className="h-8 w-8 p-0 text-white hover:text-white hover:bg-zinc-700 rounded-lg transition-all duration-200 hover:scale-110 active:scale-95 active:bg-red-600/20 active:text-red-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                     >
                                         <Mic className="h-5 w-5 transition-transform duration-200" />
                                     </Button>
@@ -167,21 +170,33 @@ export default function ChatInput({ onSend, isLoading = false, isDisabled = fals
                                         type="button"
                                         variant="secondary"
                                         size="sm"
-                                        className="h-8 px-3 rounded-lg text-sm font-medium hover:opacity-90 transition-all duration-200 hover:scale-105 cursor-pointer"
+                                        disabled={isLoading}
+                                        className="h-8 px-3 rounded-lg text-sm font-medium hover:opacity-90 transition-all duration-200 hover:scale-105 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                                         style={{ backgroundColor: "#172554", color: "#3B82F6" }}
                                     >
                                         woz-v1
                                     </Button>
                                 </div>
 
-                                <Button
-                                    type="submit"
-                                    size="sm"
-                                    disabled={!input.trim() || isLoading || isDisabled}
-                                    className="h-8 w-8 p-0 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg transition-all duration-200 hover:scale-110 disabled:hover:scale-100 shrink-0 cursor-pointer"
-                                >
-                                    <ArrowUp className="h-5 w-5" />
-                                </Button>
+                                {isLoading ? (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={onStop}
+                                        className="h-8 w-8 p-0 bg-red-600/20 hover:bg-red-600/30 text-red-500 rounded-lg transition-all duration-200 shrink-0 cursor-pointer"
+                                    >
+                                        <Square className="h-4 w-4 fill-current animate-spin" style={{ animationDuration: '3s' }} />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        type="submit"
+                                        size="sm"
+                                        disabled={!input.trim() || isDisabled}
+                                        className="h-8 w-8 p-0 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg transition-all duration-200 hover:scale-110 disabled:hover:scale-100 shrink-0 cursor-pointer"
+                                    >
+                                        <ArrowUp className="h-5 w-5" />
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     )}

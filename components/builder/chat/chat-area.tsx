@@ -226,6 +226,7 @@ export function ChatArea() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
     const {
         projectPath,
         projectName,
@@ -500,6 +501,9 @@ export function ChatArea() {
 
             // Tool calling loop
             while (continueLoop) {
+                // Create new abort controller for this request
+                abortControllerRef.current = new AbortController();
+
                 // Call the API with streaming
                 const response = await fetch("/api/chat", {
                     method: "POST",
@@ -511,6 +515,7 @@ export function ChatArea() {
                         projectPath,
                         toolResults: currentToolResults.length > 0 ? currentToolResults : undefined
                     }),
+                    signal: abortControllerRef.current.signal,
                 });
 
                 if (!response.ok) {
@@ -697,20 +702,45 @@ export function ChatArea() {
                 }
             }
         } catch (error) {
-            console.error("Chat error:", error);
-            // Update the assistant message with error
-            setMessages((prev) => {
-                const lastMsg = prev[prev.length - 1];
-                if (lastMsg && lastMsg.role === "assistant" && !lastMsg.content) {
-                    return prev.slice(0, -1).concat({
-                        ...lastMsg,
-                        content: `**Error:** ${error instanceof Error ? error.message : "Failed to get response"}`,
-                    });
-                }
-                return prev;
-            });
+            // Check if this was an abort (user stopped generation)
+            if (error instanceof Error && error.name === 'AbortError') {
+                console.log("[Chat] Generation stopped by user");
+                // Update the assistant message to indicate it was stopped
+                setMessages((prev) => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === "assistant") {
+                        // Keep whatever content was generated, just mark as stopped
+                        return prev.slice(0, -1).concat({
+                            ...lastMsg,
+                            content: lastMsg.content + "\n\n*[Generation stopped by user]*",
+                        });
+                    }
+                    return prev;
+                });
+            } else {
+                console.error("Chat error:", error);
+                // Update the assistant message with error
+                setMessages((prev) => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === "assistant" && !lastMsg.content) {
+                        return prev.slice(0, -1).concat({
+                            ...lastMsg,
+                            content: `**Error:** ${error instanceof Error ? error.message : "Failed to get response"}`,
+                        });
+                    }
+                    return prev;
+                });
+            }
         } finally {
+            abortControllerRef.current = null;
             setIsLoading(false);
+        }
+    };
+
+    // Handle stopping generation
+    const handleStopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
         }
     };
 
@@ -864,6 +894,7 @@ export function ChatArea() {
                 <div className="w-full max-w-xl min-w-0">
                     <ChatInput
                         onSend={handleSendMessage}
+                        onStop={handleStopGeneration}
                         isLoading={isLoading}
                         isDisabled={!projectPath}
                     />

@@ -6,6 +6,9 @@ import {
     Search,
     PanelLeft,
     FolderOpen,
+    Pencil,
+    Trash2,
+    ChevronDown,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +18,12 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useProject } from "@/lib/project-context";
 
 // Constants for sidebar dimensions (in pixels)
@@ -73,27 +82,105 @@ function SidebarItem({
 
 // Chat Item Component (for the chat history with proper truncation - no icons)
 function ChatItem({
+    id,
     title,
     onClick,
     isActive = false,
+    onRename,
+    onDelete,
 }: {
+    id: string;
     title: string;
     onClick?: () => void;
     isActive?: boolean;
+    onRename?: (id: string, newTitle: string) => void;
+    onDelete?: (id: string) => void;
 }) {
+    const [isEditing, setIsEditing] = React.useState(false);
+    const [editValue, setEditValue] = React.useState(title);
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    // Focus input when editing starts
+    React.useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [isEditing]);
+
+    const handleRename = () => {
+        setEditValue(title);
+        setIsEditing(true);
+    };
+
+    const handleSubmitRename = () => {
+        const trimmed = editValue.trim();
+        if (trimmed && trimmed !== title && onRename) {
+            onRename(id, trimmed);
+        }
+        setIsEditing(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleSubmitRename();
+        } else if (e.key === "Escape") {
+            setIsEditing(false);
+            setEditValue(title);
+        }
+    };
+
+    const handleBlur = () => {
+        handleSubmitRename();
+    };
+
+    if (isEditing) {
+        return (
+            <div className="w-full px-3 py-1.5">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={handleBlur}
+                    className="w-full bg-muted/50 border border-border rounded-md px-2 py-1 text-sm text-foreground outline-none focus:border-primary"
+                />
+            </div>
+        );
+    }
+
     return (
-        <button
-            onClick={onClick}
-            className={`group flex w-full items-center rounded-md px-3 py-2 text-left transition-colors outline-none cursor-pointer ${isActive
-                ? "bg-primary/10 text-primary"
-                : "hover:bg-muted/50 text-foreground"
-                }`}
-            title={title}
-        >
-            <span className="w-full truncate text-sm">
-                {title}
-            </span>
-        </button>
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <button
+                    onClick={onClick}
+                    className={`group flex w-full items-center rounded-md px-3 py-2 text-left transition-colors outline-none cursor-pointer ${isActive
+                        ? "bg-primary/10 text-primary"
+                        : "hover:bg-muted/50 text-foreground"
+                        }`}
+                    title={title}
+                >
+                    <span className="w-full truncate text-sm">
+                        {title}
+                    </span>
+                </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-40">
+                <ContextMenuItem onClick={handleRename} className="gap-2 cursor-pointer">
+                    <Pencil className="h-4 w-4" />
+                    <span>Rename</span>
+                </ContextMenuItem>
+                <ContextMenuItem
+                    onClick={() => onDelete?.(id)}
+                    className="gap-2 cursor-pointer text-red-500 focus:text-red-500"
+                >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete</span>
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     );
 }
 
@@ -119,8 +206,14 @@ function SidebarContent({
         createNewChat,
         selectChat,
         selectChatAndProject,
+        renameChat,
+        deleteChat,
     } = useProject();
     const firstLetter = projectPath ? projectName.charAt(0).toUpperCase() : null;
+
+    // Collapsible section states
+    const [isProjectChatsOpen, setIsProjectChatsOpen] = React.useState(true);
+    const [isOtherChatsOpen, setIsOtherChatsOpen] = React.useState(true);
 
     // Reset hover state when sidebar collapse state changes
     React.useEffect(() => {
@@ -246,46 +339,72 @@ function SidebarContent({
                         {/* Chat sections - Only visible when expanded */}
                         {!isCollapsed && (
                             <>
-                                {/* Project Chats Section - Only show when project is selected */}
+                                {/* Project Chats Section - Collapsible */}
                                 {projectPath && (
                                     <div className="mt-4 w-full min-w-0">
-                                        <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
-                                            Project Chats
-                                        </span>
-                                        <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
-                                            {projectChats.length === 0 ? (
-                                                <span className="px-3 py-2 text-xs text-muted-foreground/50 italic">
-                                                    No chats yet
-                                                </span>
-                                            ) : (
-                                                projectChats.map((chat) => (
-                                                    <ChatItem
-                                                        key={chat.id}
-                                                        title={chat.title || "New Chat"}
-                                                        isActive={chat.id === currentChatId}
-                                                        onClick={() => selectChat(chat.id)}
-                                                    />
-                                                ))
-                                            )}
-                                        </div>
+                                        <button
+                                            onClick={() => setIsProjectChatsOpen(!isProjectChatsOpen)}
+                                            className="flex items-center justify-between w-full px-3 py-1 rounded-md transition-colors cursor-pointer"
+                                        >
+                                            <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+                                                Project Chats
+                                            </span>
+                                            <ChevronDown
+                                                className={`h-3.5 w-3.5 text-muted-foreground/50 transition-transform duration-200 ${isProjectChatsOpen ? '' : '-rotate-90'}`}
+                                            />
+                                        </button>
+                                        {isProjectChatsOpen && (
+                                            <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
+                                                {projectChats.length === 0 ? (
+                                                    <span className="px-3 py-2 text-xs text-muted-foreground/50 italic">
+                                                        No chats yet
+                                                    </span>
+                                                ) : (
+                                                    projectChats.map((chat) => (
+                                                        <ChatItem
+                                                            key={chat.id}
+                                                            id={chat.id}
+                                                            title={chat.title || "New Chat"}
+                                                            isActive={chat.id === currentChatId}
+                                                            onClick={() => selectChat(chat.id)}
+                                                            onRename={renameChat}
+                                                            onDelete={deleteChat}
+                                                        />
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
-                                {/* Other Chats Section - Chats from other projects */}
+                                {/* Other Chats Section - Collapsible */}
                                 {otherChats.length > 0 && (
                                     <div className="mt-4 w-full min-w-0">
-                                        <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
-                                            Other Chats
-                                        </span>
-                                        <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
-                                            {otherChats.map((chat) => (
-                                                <ChatItem
-                                                    key={chat.id}
-                                                    title={`${chat.title || "New Chat"} · ${chat.project_name}`}
-                                                    onClick={() => selectChatAndProject(chat.id, chat.project_path)}
-                                                />
-                                            ))}
-                                        </div>
+                                        <button
+                                            onClick={() => setIsOtherChatsOpen(!isOtherChatsOpen)}
+                                            className="flex items-center justify-between w-full px-3 py-1 rounded-md transition-colors cursor-pointer"
+                                        >
+                                            <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+                                                Other Chats
+                                            </span>
+                                            <ChevronDown
+                                                className={`h-3.5 w-3.5 text-muted-foreground/50 transition-transform duration-200 ${isOtherChatsOpen ? '' : '-rotate-90'}`}
+                                            />
+                                        </button>
+                                        {isOtherChatsOpen && (
+                                            <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
+                                                {otherChats.map((chat) => (
+                                                    <ChatItem
+                                                        key={chat.id}
+                                                        id={chat.id}
+                                                        title={`${chat.title || "New Chat"} · ${chat.project_name}`}
+                                                        onClick={() => selectChatAndProject(chat.id, chat.project_path)}
+                                                        onRename={renameChat}
+                                                        onDelete={deleteChat}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </>
