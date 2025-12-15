@@ -118,6 +118,7 @@ function SidebarContent({
         currentChatId,
         createNewChat,
         selectChat,
+        selectChatAndProject,
     } = useProject();
     const firstLetter = projectPath ? projectName.charAt(0).toUpperCase() : null;
 
@@ -281,7 +282,7 @@ function SidebarContent({
                                                 <ChatItem
                                                     key={chat.id}
                                                     title={`${chat.title || "New Chat"} · ${chat.project_name}`}
-                                                    onClick={() => selectChat(chat.id)}
+                                                    onClick={() => selectChatAndProject(chat.id, chat.project_path)}
                                                 />
                                             ))}
                                         </div>

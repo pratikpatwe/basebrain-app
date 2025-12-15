@@ -24,6 +24,7 @@ interface ProjectContextType {
     // Chat actions
     createNewChat: () => Promise<Chat | null>;
     selectChat: (chatId: string) => Promise<void>;
+    selectChatAndProject: (chatId: string, projectPath: string) => Promise<void>;
     deleteChat: (chatId: string) => Promise<void>;
     refreshChats: () => Promise<void>;
 }
@@ -41,6 +42,7 @@ const ProjectContext = createContext<ProjectContextType>({
     otherChats: [],
     createNewChat: async () => null,
     selectChat: async () => { },
+    selectChatAndProject: async () => { },
     deleteChat: async () => { },
     refreshChats: async () => { },
 });
@@ -244,6 +246,23 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
+    // Select a chat and switch to its project (for other chats)
+    const selectChatAndProject = useCallback(async (chatId: string, newProjectPath: string) => {
+        // First switch to the project
+        await initializeProject(newProjectPath);
+
+        // Then select the chat
+        setCurrentChatId(chatId);
+
+        // Save to app state
+        if (window.electronDB) {
+            await window.electronDB.appState.save({
+                lastProjectPath: newProjectPath,
+                lastChatId: chatId
+            });
+        }
+    }, []);
+
     // Delete a chat
     const deleteChat = useCallback(async (chatId: string) => {
         if (!window.electronDB) return;
@@ -278,6 +297,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
                 otherChats,
                 createNewChat,
                 selectChat,
+                selectChatAndProject,
                 deleteChat,
                 refreshChats,
             }}
