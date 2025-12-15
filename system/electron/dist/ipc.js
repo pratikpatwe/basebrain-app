@@ -266,4 +266,20 @@ function registerIpcHandlers(getMainWindow) {
         const { getPathStats } = await Promise.resolve().then(() => __importStar(require("./services/file-system")));
         return getPathStats(filePath);
     });
+    // ============================================
+    // FILE WATCHER IPC HANDLERS
+    // ============================================
+    // Start watching a directory
+    electron_1.ipcMain.handle("fs:watch", async (_, dirPath) => {
+        const { watchDirectory } = await Promise.resolve().then(() => __importStar(require("./services/file-watcher")));
+        const mainWindow = getMainWindow();
+        watchDirectory(dirPath, mainWindow);
+        return true;
+    });
+    // Stop watching a directory
+    electron_1.ipcMain.handle("fs:unwatch", async (_, dirPath) => {
+        const { stopWatching } = await Promise.resolve().then(() => __importStar(require("./services/file-watcher")));
+        stopWatching(dirPath);
+        return true;
+    });
 }

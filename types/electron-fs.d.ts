@@ -12,6 +12,13 @@ interface ElectronFS {
         modified: Date;
         created: Date;
     }>;
+    watch: (dirPath: string) => Promise<boolean>;
+    unwatch: (dirPath: string) => Promise<boolean>;
+    onFileChange: (callback: (event: {
+        eventType: string;
+        path: string;
+        projectPath: string;
+    }) => void) => () => void;
 }
 
 interface FileSystemNode {

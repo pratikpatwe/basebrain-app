@@ -293,4 +293,23 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         const { getPathStats } = await import("./services/file-system");
         return getPathStats(filePath);
     });
+
+    // ============================================
+    // FILE WATCHER IPC HANDLERS
+    // ============================================
+
+    // Start watching a directory
+    ipcMain.handle("fs:watch", async (_, dirPath: string) => {
+        const { watchDirectory } = await import("./services/file-watcher");
+        const mainWindow = getMainWindow();
+        watchDirectory(dirPath, mainWindow);
+        return true;
+    });
+
+    // Stop watching a directory
+    ipcMain.handle("fs:unwatch", async (_, dirPath: string) => {
+        const { stopWatching } = await import("./services/file-watcher");
+        stopWatching(dirPath);
+        return true;
+    });
 }

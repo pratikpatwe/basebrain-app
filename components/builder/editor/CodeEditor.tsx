@@ -83,6 +83,9 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
                     // Load directory structure
                     const structure = await window.electronFS.readDirectory(lastProjectPath, 4)
                     setFiles(structure as FileSystemNode[])
+
+                    // Start watching for file changes
+                    await window.electronFS.watch(lastProjectPath)
                 }
             } catch (error) {
                 console.error("Error loading project:", error)
@@ -93,29 +96,35 @@ export function CodeEditor({ initialFiles, className }: CodeEditorProps) {
 
         loadProject()
 
-        // Poll for project changes every 2 seconds
-        const interval = setInterval(async () => {
-            if (typeof window === "undefined" || !window.electronDB) return
-
-            try {
-                const appState = await window.electronDB.appState.get()
-                const currentPath = appState?.lastProjectPath
-
-                // If project path changed, reload
-                if (currentPath && currentPath !== projectPath && window.electronFS) {
-                    setProjectPath(currentPath)
-                    setOpenFiles([]) // Clear open files
-                    setActiveFileId(null)
-
-                    const structure = await window.electronFS.readDirectory(currentPath, 4)
-                    setFiles(structure as FileSystemNode[])
-                }
-            } catch (error) {
-                console.error("Error checking project changes:", error)
+        // Cleanup watcher on unmount
+        return () => {
+            if (projectPath && window.electronFS) {
+                window.electronFS.unwatch(projectPath)
             }
-        }, 2000)
+        }
 
-        return () => clearInterval(interval)
+    }, [])
+
+    // Listen for real-time file system changes
+    React.useEffect(() => {
+        if (!window.electronFS || !projectPath) return
+
+        const cleanup = window.electronFS.onFileChange(async (event) => {
+            // Only process changes for the current project
+            if (event.projectPath !== projectPath) return
+
+            console.log("[CodeEditor] File change detected:", event.eventType, event.path)
+
+            // Reload directory structure
+            try {
+                const structure = await window.electronFS!.readDirectory(projectPath, 4)
+                setFiles(structure as FileSystemNode[])
+            } catch (error) {
+                console.error("Error reloading files:", error)
+            }
+        })
+
+        return cleanup
     }, [projectPath])
 
     // Get the currently active file

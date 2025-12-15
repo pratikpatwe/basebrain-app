@@ -101,4 +101,15 @@ electron_1.contextBridge.exposeInMainWorld("electronFS", {
     pathExists: (filePath) => electron_1.ipcRenderer.invoke("fs:pathExists", filePath),
     // Get path stats
     getStats: (filePath) => electron_1.ipcRenderer.invoke("fs:getStats", filePath),
+    // Watch directory for changes
+    watch: (dirPath) => electron_1.ipcRenderer.invoke("fs:watch", dirPath),
+    // Stop watching directory
+    unwatch: (dirPath) => electron_1.ipcRenderer.invoke("fs:unwatch", dirPath),
+    // Listen for file system changes
+    onFileChange: (callback) => {
+        const listener = (_, event) => callback(event);
+        electron_1.ipcRenderer.on("file-system-change", listener);
+        // Return cleanup function
+        return () => electron_1.ipcRenderer.removeListener("file-system-change", listener);
+    },
 });
