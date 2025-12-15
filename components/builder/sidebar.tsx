@@ -21,19 +21,6 @@ import { useProject } from "@/lib/project-context";
 export const SIDEBAR_EXPANDED_WIDTH = 240;
 export const SIDEBAR_COLLAPSED_WIDTH = 56;
 
-// Mock chat history data
-const projectChats = [
-    { id: 1, title: "API Integration" },
-    { id: 2, title: "Auth Setup" },
-    { id: 3, title: "Database Schema Design for Production" },
-];
-
-const generalChats = [
-    { id: 4, title: "React Best Practices and Design Patterns" },
-    { id: 5, title: "TypeScript Tips for Better Code Quality" },
-    { id: 6, title: "Performance Optimization Strategies" },
-];
-
 // Sidebar Item Component with Tooltip
 function SidebarItem({
     icon: Icon,
@@ -88,17 +75,22 @@ function SidebarItem({
 function ChatItem({
     title,
     onClick,
+    isActive = false,
 }: {
     title: string;
     onClick?: () => void;
+    isActive?: boolean;
 }) {
     return (
         <button
             onClick={onClick}
-            className="group flex w-full items-center rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/50 outline-none cursor-pointer"
+            className={`group flex w-full items-center rounded-md px-3 py-2 text-left transition-colors outline-none cursor-pointer ${isActive
+                ? "bg-primary/10 text-primary"
+                : "hover:bg-muted/50 text-foreground"
+                }`}
             title={title}
         >
-            <span className="w-full truncate text-sm text-foreground">
+            <span className="w-full truncate text-sm">
                 {title}
             </span>
         </button>
@@ -116,7 +108,17 @@ function SidebarContent({
     onCollapseClick: () => void;
 }) {
     const [isHovering, setIsHovering] = React.useState(false);
-    const { projectName, projectPath, selectFolder, isElectron } = useProject();
+    const {
+        projectName,
+        projectPath,
+        selectFolder,
+        isElectron,
+        projectChats,
+        otherChats,
+        currentChatId,
+        createNewChat,
+        selectChat,
+    } = useProject();
     const firstLetter = projectPath ? projectName.charAt(0).toUpperCase() : null;
 
     // Reset hover state when sidebar collapse state changes
@@ -231,6 +233,7 @@ function SidebarContent({
                             isCollapsed={isCollapsed}
                             isMainAction={true}
                             disabled={!projectPath}
+                            onClick={createNewChat}
                         />
                         <SidebarItem
                             icon={Search}
@@ -249,30 +252,41 @@ function SidebarContent({
                                             Project Chats
                                         </span>
                                         <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
-                                            {projectChats.map((chat) => (
+                                            {projectChats.length === 0 ? (
+                                                <span className="px-3 py-2 text-xs text-muted-foreground/50 italic">
+                                                    No chats yet
+                                                </span>
+                                            ) : (
+                                                projectChats.map((chat) => (
+                                                    <ChatItem
+                                                        key={chat.id}
+                                                        title={chat.title || "New Chat"}
+                                                        isActive={chat.id === currentChatId}
+                                                        onClick={() => selectChat(chat.id)}
+                                                    />
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Other Chats Section - Chats from other projects */}
+                                {otherChats.length > 0 && (
+                                    <div className="mt-4 w-full min-w-0">
+                                        <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
+                                            Other Chats
+                                        </span>
+                                        <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
+                                            {otherChats.map((chat) => (
                                                 <ChatItem
                                                     key={chat.id}
-                                                    title={chat.title}
+                                                    title={`${chat.title || "New Chat"} · ${chat.project_name}`}
+                                                    onClick={() => selectChat(chat.id)}
                                                 />
                                             ))}
                                         </div>
                                     </div>
                                 )}
-
-                                {/* General Chats Section */}
-                                <div className="mt-4 w-full min-w-0">
-                                    <span className="px-3 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider block truncate">
-                                        Other Chats
-                                    </span>
-                                    <div className="flex flex-col gap-0.5 mt-1 w-full min-w-0">
-                                        {generalChats.map((chat) => (
-                                            <ChatItem
-                                                key={chat.id}
-                                                title={chat.title}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
                             </>
                         )}
                     </div>
@@ -316,6 +330,39 @@ export function BuilderSidebar({
 // Hook for sidebar state management
 export function useSidebarState() {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true); // Default to collapsed
+    const [isLoaded, setIsLoaded] = React.useState(false);
+
+    // Load saved state from database
+    React.useEffect(() => {
+        const loadState = async () => {
+            if (typeof window !== "undefined" && window.electronDB) {
+                try {
+                    const appState = await window.electronDB.appState.get();
+                    setIsSidebarCollapsed(appState.sidebarCollapsed);
+                } catch (error) {
+                    console.error("[Sidebar] Error loading state:", error);
+                }
+            }
+            setIsLoaded(true);
+        };
+        loadState();
+    }, []);
+
+    // Save state to database when it changes (after initial load)
+    React.useEffect(() => {
+        if (!isLoaded) return;
+
+        const saveState = async () => {
+            if (typeof window !== "undefined" && window.electronDB) {
+                try {
+                    await window.electronDB.appState.save({ sidebarCollapsed: isSidebarCollapsed });
+                } catch (error) {
+                    console.error("[Sidebar] Error saving state:", error);
+                }
+            }
+        };
+        saveState();
+    }, [isSidebarCollapsed, isLoaded]);
 
     // Toggle sidebar between expanded and collapsed
     const toggleSidebar = React.useCallback(() => {

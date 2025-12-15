@@ -109,4 +109,111 @@ function registerIpcHandlers(getMainWindow) {
         const { toolDefinitions } = await Promise.resolve().then(() => __importStar(require("./tools")));
         return toolDefinitions;
     });
+    // ============================================
+    // DATABASE IPC HANDLERS
+    // ============================================
+    // --- PROJECTS ---
+    electron_1.ipcMain.handle("db:projects:getOrCreate", async (_, folderPath) => {
+        const { getOrCreateProject } = await Promise.resolve().then(() => __importStar(require("./database/repositories/projects")));
+        return getOrCreateProject(folderPath);
+    });
+    electron_1.ipcMain.handle("db:projects:getById", async (_, id) => {
+        const { getProjectById } = await Promise.resolve().then(() => __importStar(require("./database/repositories/projects")));
+        return getProjectById(id);
+    });
+    electron_1.ipcMain.handle("db:projects:getByPath", async (_, path) => {
+        const { getProjectByPath } = await Promise.resolve().then(() => __importStar(require("./database/repositories/projects")));
+        return getProjectByPath(path);
+    });
+    electron_1.ipcMain.handle("db:projects:getAll", async () => {
+        const { getAllProjects } = await Promise.resolve().then(() => __importStar(require("./database/repositories/projects")));
+        return getAllProjects();
+    });
+    electron_1.ipcMain.handle("db:projects:delete", async (_, id) => {
+        const { deleteProject } = await Promise.resolve().then(() => __importStar(require("./database/repositories/projects")));
+        deleteProject(id);
+        return true;
+    });
+    // --- CHATS ---
+    electron_1.ipcMain.handle("db:chats:create", async (_, projectId, title) => {
+        const { createChat } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        return createChat(projectId, title);
+    });
+    electron_1.ipcMain.handle("db:chats:getById", async (_, id) => {
+        const { getChatById } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        return getChatById(id);
+    });
+    electron_1.ipcMain.handle("db:chats:getByProject", async (_, projectId) => {
+        const { getChatsByProject } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        return getChatsByProject(projectId);
+    });
+    electron_1.ipcMain.handle("db:chats:getOthers", async (_, currentProjectId) => {
+        const { getOtherChats } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        return getOtherChats(currentProjectId);
+    });
+    electron_1.ipcMain.handle("db:chats:getAll", async () => {
+        const { getAllChatsWithProjects } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        return getAllChatsWithProjects();
+    });
+    electron_1.ipcMain.handle("db:chats:updateTitle", async (_, id, title) => {
+        const { updateChatTitle } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        updateChatTitle(id, title);
+        return true;
+    });
+    electron_1.ipcMain.handle("db:chats:delete", async (_, id) => {
+        const { deleteChat } = await Promise.resolve().then(() => __importStar(require("./database/repositories/chats")));
+        deleteChat(id);
+        return true;
+    });
+    // --- MESSAGES ---
+    electron_1.ipcMain.handle("db:messages:save", async (_, message) => {
+        const { saveMessage } = await Promise.resolve().then(() => __importStar(require("./database/repositories/messages")));
+        return saveMessage(message);
+    });
+    electron_1.ipcMain.handle("db:messages:update", async (_, id, updates) => {
+        const { updateMessage } = await Promise.resolve().then(() => __importStar(require("./database/repositories/messages")));
+        updateMessage(id, updates);
+        return true;
+    });
+    electron_1.ipcMain.handle("db:messages:getByChat", async (_, chatId) => {
+        const { getMessagesByChat } = await Promise.resolve().then(() => __importStar(require("./database/repositories/messages")));
+        return getMessagesByChat(chatId);
+    });
+    electron_1.ipcMain.handle("db:messages:getLastN", async (_, chatId, n) => {
+        const { getLastNMessages } = await Promise.resolve().then(() => __importStar(require("./database/repositories/messages")));
+        return getLastNMessages(chatId, n);
+    });
+    electron_1.ipcMain.handle("db:messages:deleteFromPoint", async (_, chatId, fromMessageId) => {
+        const { deleteMessagesFromPoint } = await Promise.resolve().then(() => __importStar(require("./database/repositories/messages")));
+        deleteMessagesFromPoint(chatId, fromMessageId);
+        return true;
+    });
+    // --- SNAPSHOTS ---
+    electron_1.ipcMain.handle("db:snapshots:create", async (_, messageId, changes) => {
+        const { createSnapshots } = await Promise.resolve().then(() => __importStar(require("./database/repositories/snapshots")));
+        return createSnapshots(messageId, changes);
+    });
+    electron_1.ipcMain.handle("db:snapshots:getByMessage", async (_, messageId) => {
+        const { getSnapshotsByMessage } = await Promise.resolve().then(() => __importStar(require("./database/repositories/snapshots")));
+        return getSnapshotsByMessage(messageId);
+    });
+    electron_1.ipcMain.handle("db:snapshots:getAfterMessage", async (_, chatId, fromMessageId) => {
+        const { getSnapshotsAfterMessage } = await Promise.resolve().then(() => __importStar(require("./database/repositories/snapshots")));
+        return getSnapshotsAfterMessage(chatId, fromMessageId);
+    });
+    // --- ROLLBACK ---
+    electron_1.ipcMain.handle("db:rollback", async (_, chatId, messageId, projectPath) => {
+        const { rollbackToMessage } = await Promise.resolve().then(() => __importStar(require("./services/rollback")));
+        return rollbackToMessage(chatId, messageId, projectPath);
+    });
+    // --- APP STATE ---
+    electron_1.ipcMain.handle("db:appState:get", async () => {
+        const { getAppState } = await Promise.resolve().then(() => __importStar(require("./database/repositories/app-state")));
+        return getAppState();
+    });
+    electron_1.ipcMain.handle("db:appState:save", async (_, state) => {
+        const { saveAppState } = await Promise.resolve().then(() => __importStar(require("./database/repositories/app-state")));
+        saveAppState(state);
+        return true;
+    });
 }

@@ -8,7 +8,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ChatInput from "./chat-input";
 import { FileOps } from "./tools/file-ops";
-import { User, ChevronDown, ChevronRight, Copy, Check, FolderOpen } from "lucide-react";
+import { User, ChevronDown, ChevronRight, Copy, Check, FolderOpen, Undo2 } from "lucide-react";
 import { useProject } from "@/lib/project-context";
 
 // Tool call type
@@ -226,7 +226,15 @@ export function ChatArea() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
-    const { projectPath, projectName, selectFolder, isElectron } = useProject();
+    const {
+        projectPath,
+        projectName,
+        selectFolder,
+        isElectron,
+        currentChatId,
+        createNewChat,
+        refreshChats,
+    } = useProject();
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -235,7 +243,88 @@ export function ChatArea() {
         }
     }, [messages, isLoading]);
 
-    // Execute a tool via Electron IPC
+    // Load messages when chat changes
+    useEffect(() => {
+        const loadMessages = async () => {
+            if (!currentChatId || !window.electronDB) {
+                setMessages([]);
+                return;
+            }
+
+            try {
+                const dbMessages = await window.electronDB.messages.getByChat(currentChatId);
+
+                // Convert DB messages to UI Message format
+                const uiMessages: Message[] = dbMessages.map(msg => ({
+                    id: msg.id,
+                    role: msg.role as "user" | "assistant",
+                    content: msg.content || "",
+                    timestamp: new Date(msg.created_at),
+                    thinking: msg.thinking || undefined,
+                    tool_calls: msg.tool_calls ? JSON.parse(msg.tool_calls) : undefined,
+                    tool_results: msg.tool_results ? JSON.parse(msg.tool_results) : undefined,
+                    usage: msg.tokens_prompt || msg.tokens_completion ? {
+                        prompt_tokens: msg.tokens_prompt,
+                        completion_tokens: msg.tokens_completion,
+                        total_tokens: msg.tokens_prompt + msg.tokens_completion,
+                    } : undefined,
+                }));
+
+                setMessages(uiMessages);
+            } catch (error) {
+                console.error("[ChatArea] Error loading messages:", error);
+                setMessages([]);
+            }
+        };
+
+        loadMessages();
+    }, [currentChatId]);
+
+    // Save a message to the database - returns the database-generated ID
+    const saveMessageToDB = async (message: Message, chatId: string): Promise<string | null> => {
+        if (!window.electronDB) return null;
+
+        try {
+            const savedMessage = await window.electronDB.messages.save({
+                chat_id: chatId,
+                role: message.role,
+                content: message.content || undefined,
+                thinking: message.thinking,
+                tool_calls: message.tool_calls,
+                tool_results: message.tool_results,
+                tokens_prompt: message.usage?.prompt_tokens,
+                tokens_completion: message.usage?.completion_tokens,
+            });
+            return savedMessage.id;
+        } catch (error) {
+            console.error("[ChatArea] Error saving message:", error);
+            return null;
+        }
+    };
+
+    // Get or create a chat for the current message
+    const ensureChatExists = async (): Promise<string | null> => {
+        if (currentChatId) return currentChatId;
+
+        // Create a new chat
+        const newChat = await createNewChat();
+        return newChat?.id || null;
+    };
+
+    // File-modifying tool names that need snapshot capture
+    const FILE_MODIFYING_TOOLS = ['write_file', 'create_file', 'delete_file', 'append_file'];
+
+    // Current message ID for snapshot association (set during tool execution)
+    const currentMessageIdRef = useRef<string | null>(null);
+
+    // Pending snapshots to save after tool execution
+    const pendingSnapshotsRef = useRef<Array<{
+        file_path: string;
+        action: 'created' | 'modified' | 'deleted';
+        content_before?: string;
+    }>>([]);
+
+    // Execute a tool via Electron IPC with snapshot capture
     const executeTool = async (toolName: string, args: Record<string, unknown>): Promise<string> => {
         console.log("[Tool Execution]", { toolName, args, projectPath });
 
@@ -248,6 +337,41 @@ export function ChatArea() {
         }
 
         try {
+            // Capture file state before modification for rollback
+            if (FILE_MODIFYING_TOOLS.includes(toolName) && args.path) {
+                const filePath = args.path as string;
+                let contentBefore: string | null = null;
+                let action: 'created' | 'modified' | 'deleted' = 'created';
+
+                // Try to read existing file content
+                try {
+                    const readResult = await window.electronTools.execute('read_file', { path: filePath }, projectPath);
+                    console.log("[Snapshot] Read file result:", { path: filePath, success: readResult.success, hasData: !!readResult.data });
+
+                    if (readResult.success && readResult.data) {
+                        contentBefore = (readResult.data as { content: string }).content;
+                        action = toolName === 'delete_file' ? 'deleted' : 'modified';
+                        console.log("[Snapshot] File exists, will capture as:", action, "content length:", contentBefore?.length);
+                    } else {
+                        // File doesn't exist, will be created
+                        action = 'created';
+                        console.log("[Snapshot] File doesn't exist, will be created");
+                    }
+                } catch (err) {
+                    // File doesn't exist, will be created
+                    action = 'created';
+                    console.log("[Snapshot] Error reading file, assuming new:", err);
+                }
+
+                // Store snapshot for later saving
+                pendingSnapshotsRef.current.push({
+                    file_path: filePath,
+                    action,
+                    content_before: contentBefore || undefined,
+                });
+                console.log("[Snapshot] Stored pending snapshot:", { path: filePath, action, hasContent: !!contentBefore });
+            }
+
             const result = await window.electronTools.execute(toolName, args, projectPath);
             console.log("[Tool Execution] Result:", result);
             return JSON.stringify(result);
@@ -257,9 +381,71 @@ export function ChatArea() {
         }
     };
 
+    // Save pending snapshots to database
+    const savePendingSnapshots = async (messageId: string) => {
+        if (!window.electronDB || pendingSnapshotsRef.current.length === 0) return;
+
+        try {
+            await window.electronDB.snapshots.create(messageId, pendingSnapshotsRef.current);
+            console.log(`[Snapshots] Saved ${pendingSnapshotsRef.current.length} snapshots for message ${messageId}`);
+        } catch (error) {
+            console.error("[Snapshots] Error saving:", error);
+        }
+
+        // Clear pending snapshots
+        pendingSnapshotsRef.current = [];
+    };
+
+    // Handle rollback to a specific message
+    const handleRollback = async (messageId: string) => {
+        if (!window.electronDB || !currentChatId || !projectPath) {
+            console.error("[Rollback] Cannot rollback - missing DB, chat, or project");
+            return;
+        }
+
+        try {
+            console.log(`[Rollback] Rolling back to message ${messageId}`);
+
+            const result = await window.electronDB.rollback(currentChatId, messageId, projectPath);
+
+            if (result.success) {
+                console.log(`[Rollback] Success - restored ${result.restoredFiles.length} files`);
+
+                // Reload messages from database
+                const dbMessages = await window.electronDB.messages.getByChat(currentChatId);
+                const uiMessages: Message[] = dbMessages.map(msg => ({
+                    id: msg.id,
+                    role: msg.role as "user" | "assistant",
+                    content: msg.content || "",
+                    timestamp: new Date(msg.created_at),
+                    thinking: msg.thinking || undefined,
+                    tool_calls: msg.tool_calls ? JSON.parse(msg.tool_calls) : undefined,
+                    tool_results: msg.tool_results ? JSON.parse(msg.tool_results) : undefined,
+                    usage: msg.tokens_prompt || msg.tokens_completion ? {
+                        prompt_tokens: msg.tokens_prompt,
+                        completion_tokens: msg.tokens_completion,
+                        total_tokens: msg.tokens_prompt + msg.tokens_completion,
+                    } : undefined,
+                }));
+                setMessages(uiMessages);
+            } else {
+                console.error("[Rollback] Failed:", result.error);
+            }
+        } catch (error) {
+            console.error("[Rollback] Error:", error);
+        }
+    };
+
     // Handle sending a message with tool calling support
     const handleSendMessage = async (content: string) => {
         if (!content.trim() || isLoading) return;
+
+        // Ensure we have a chat to save messages to
+        const chatId = await ensureChatExists();
+        if (!chatId) {
+            console.error("[ChatArea] Could not create or get chat");
+            return;
+        }
 
         // Add user message
         const userMessage: Message = {
@@ -268,6 +454,14 @@ export function ChatArea() {
             content: content.trim(),
             timestamp: new Date(),
         };
+
+        // Save user message to database and get the database-generated ID
+        const savedUserMessageId = await saveMessageToDB(userMessage, chatId);
+
+        // Update user message with database ID (for rollback to work)
+        if (savedUserMessageId) {
+            userMessage.id = savedUserMessageId;
+        }
 
         // Create assistant message placeholder for streaming
         const assistantMessageId = `assistant-${Date.now()}`;
@@ -300,6 +494,9 @@ export function ChatArea() {
             // Accumulated token usage across all API calls
             let totalPromptTokens = 0;
             let totalCompletionTokens = 0;
+
+            // Accumulated thinking content
+            let accumulatedThinking = "";
 
             // Tool calling loop
             while (continueLoop) {
@@ -350,11 +547,12 @@ export function ChatArea() {
                                     // Thinking started
                                 } else if (data.type === "thinking") {
                                     thinkingContent += data.content;
+                                    accumulatedThinking += data.content;
                                     // Update thinking in the message
                                     setMessages((prev) =>
                                         prev.map((msg) =>
                                             msg.id === assistantMessageId
-                                                ? { ...msg, thinking: thinkingContent }
+                                                ? { ...msg, thinking: accumulatedThinking }
                                                 : msg
                                         )
                                     );
@@ -470,6 +668,32 @@ export function ChatArea() {
                 } else {
                     // No more tool calls, we're done
                     continueLoop = false;
+
+                    // Save the final assistant message to database
+                    const finalAssistantMessage: Message = {
+                        id: assistantMessageId,
+                        role: "assistant",
+                        content: fullContent,
+                        timestamp: new Date(),
+                        thinking: accumulatedThinking || undefined,
+                        tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+                        tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : undefined,
+                        usage: {
+                            prompt_tokens: totalPromptTokens,
+                            completion_tokens: totalCompletionTokens,
+                            total_tokens: totalPromptTokens + totalCompletionTokens,
+                        },
+                    };
+
+                    await saveMessageToDB(finalAssistantMessage, chatId);
+
+                    // Save file snapshots - associated with the user message (rollback point)
+                    if (savedUserMessageId) {
+                        await savePendingSnapshots(savedUserMessageId);
+                    }
+
+                    // Refresh chats to update title in sidebar (title is auto-generated from first message)
+                    await refreshChats();
                 }
             }
         } catch (error) {
@@ -560,11 +784,19 @@ export function ChatArea() {
                                     <div key={message.id} className="w-full">
                                         {message.role === "user" ? (
                                             // User message - icon above, subtle dark background
-                                            <div className="flex flex-col gap-2">
+                                            <div className="flex flex-col gap-2 group">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-7 h-7 rounded-lg bg-zinc-700 flex items-center justify-center">
                                                         <User className="h-3.5 w-3.5 text-zinc-300" />
                                                     </div>
+                                                    {/* Undo button - visible on hover */}
+                                                    <button
+                                                        onClick={() => handleRollback(message.id)}
+                                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-md hover:bg-zinc-700/50 text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                                        title="Undo changes made after this message"
+                                                    >
+                                                        <Undo2 className="h-3.5 w-3.5" />
+                                                    </button>
                                                 </div>
                                                 <div className="bg-zinc-800/60 rounded-xl px-4 py-3 border border-zinc-700/50 min-w-0">
                                                     <p className="text-sm text-zinc-200 whitespace-pre-wrap break-words overflow-wrap-anywhere">

@@ -169,9 +169,6 @@ function LineChanges({ data }: { data: unknown }): React.ReactNode {
 export function FileOps({ toolCalls, toolResults }: FileOpsProps) {
     if (!toolCalls || toolCalls.length === 0) return null;
 
-    // Debug logging
-    console.log("[FileOps] Rendering with:", { toolCalls: toolCalls.length, toolResults: toolResults?.length });
-
     return (
         <div className="flex flex-col gap-2 mb-3">
             {toolCalls.map((toolCall) => {
@@ -179,10 +176,6 @@ export function FileOps({ toolCalls, toolResults }: FileOpsProps) {
                 let parsedResult: { success?: boolean; data?: unknown; error?: string } = {};
                 try {
                     parsedResult = result ? JSON.parse(result.result) : {};
-                    // Debug: log the parsed data for write_file
-                    if (toolCall.function.name === "write_file" && parsedResult.data) {
-                        console.log("[FileOps] write_file result:", parsedResult.data);
-                    }
                 } catch {
                     parsedResult = { error: "Failed to parse result" };
                 }

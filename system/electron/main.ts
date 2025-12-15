@@ -7,6 +7,7 @@ import { app, BrowserWindow } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./ipc";
 import { hasSession } from "./auth";
+import { initializeDatabase, closeDatabase } from "./database";
 
 app.setAsDefaultProtocolClient("basebrain");
 
@@ -79,6 +80,14 @@ async function createWindow(): Promise<void> {
 
 // Register IPC handlers and create window when app is ready
 app.whenReady().then(() => {
+    // Initialize the database
+    try {
+        initializeDatabase();
+        console.log("[Main] Database initialized");
+    } catch (error) {
+        console.error("[Main] Failed to initialize database:", error);
+    }
+
     // Register IPC handlers before creating window
     registerIpcHandlers(getMainWindow);
 
@@ -89,8 +98,14 @@ app.whenReady().then(() => {
 // Quit when all windows are closed (except on macOS)
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
+        closeDatabase();
         app.quit();
     }
+});
+
+// Cleanup on before-quit
+app.on("before-quit", () => {
+    closeDatabase();
 });
 
 // On macOS, re-create window when dock icon is clicked

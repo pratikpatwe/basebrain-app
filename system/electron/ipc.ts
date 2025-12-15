@@ -92,4 +92,144 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         const { toolDefinitions } = await import("./tools");
         return toolDefinitions;
     });
+
+    // ============================================
+    // DATABASE IPC HANDLERS
+    // ============================================
+
+    // --- PROJECTS ---
+    ipcMain.handle("db:projects:getOrCreate", async (_, folderPath: string) => {
+        const { getOrCreateProject } = await import("./database/repositories/projects");
+        return getOrCreateProject(folderPath);
+    });
+
+    ipcMain.handle("db:projects:getById", async (_, id: string) => {
+        const { getProjectById } = await import("./database/repositories/projects");
+        return getProjectById(id);
+    });
+
+    ipcMain.handle("db:projects:getByPath", async (_, path: string) => {
+        const { getProjectByPath } = await import("./database/repositories/projects");
+        return getProjectByPath(path);
+    });
+
+    ipcMain.handle("db:projects:getAll", async () => {
+        const { getAllProjects } = await import("./database/repositories/projects");
+        return getAllProjects();
+    });
+
+    ipcMain.handle("db:projects:delete", async (_, id: string) => {
+        const { deleteProject } = await import("./database/repositories/projects");
+        deleteProject(id);
+        return true;
+    });
+
+    // --- CHATS ---
+    ipcMain.handle("db:chats:create", async (_, projectId: string, title?: string) => {
+        const { createChat } = await import("./database/repositories/chats");
+        return createChat(projectId, title);
+    });
+
+    ipcMain.handle("db:chats:getById", async (_, id: string) => {
+        const { getChatById } = await import("./database/repositories/chats");
+        return getChatById(id);
+    });
+
+    ipcMain.handle("db:chats:getByProject", async (_, projectId: string) => {
+        const { getChatsByProject } = await import("./database/repositories/chats");
+        return getChatsByProject(projectId);
+    });
+
+    ipcMain.handle("db:chats:getOthers", async (_, currentProjectId: string) => {
+        const { getOtherChats } = await import("./database/repositories/chats");
+        return getOtherChats(currentProjectId);
+    });
+
+    ipcMain.handle("db:chats:getAll", async () => {
+        const { getAllChatsWithProjects } = await import("./database/repositories/chats");
+        return getAllChatsWithProjects();
+    });
+
+    ipcMain.handle("db:chats:updateTitle", async (_, id: string, title: string) => {
+        const { updateChatTitle } = await import("./database/repositories/chats");
+        updateChatTitle(id, title);
+        return true;
+    });
+
+    ipcMain.handle("db:chats:delete", async (_, id: string) => {
+        const { deleteChat } = await import("./database/repositories/chats");
+        deleteChat(id);
+        return true;
+    });
+
+    // --- MESSAGES ---
+    ipcMain.handle("db:messages:save", async (_, message: {
+        chat_id: string;
+        role: string;
+        content?: string;
+        thinking?: string;
+        tool_calls?: unknown[];
+        tool_results?: unknown[];
+        tokens_prompt?: number;
+        tokens_completion?: number;
+    }) => {
+        const { saveMessage } = await import("./database/repositories/messages");
+        return saveMessage(message as Parameters<typeof saveMessage>[0]);
+    });
+
+    ipcMain.handle("db:messages:update", async (_, id: string, updates: Record<string, unknown>) => {
+        const { updateMessage } = await import("./database/repositories/messages");
+        updateMessage(id, updates);
+        return true;
+    });
+
+    ipcMain.handle("db:messages:getByChat", async (_, chatId: string) => {
+        const { getMessagesByChat } = await import("./database/repositories/messages");
+        return getMessagesByChat(chatId);
+    });
+
+    ipcMain.handle("db:messages:getLastN", async (_, chatId: string, n: number) => {
+        const { getLastNMessages } = await import("./database/repositories/messages");
+        return getLastNMessages(chatId, n);
+    });
+
+    ipcMain.handle("db:messages:deleteFromPoint", async (_, chatId: string, fromMessageId: string) => {
+        const { deleteMessagesFromPoint } = await import("./database/repositories/messages");
+        deleteMessagesFromPoint(chatId, fromMessageId);
+        return true;
+    });
+
+    // --- SNAPSHOTS ---
+    ipcMain.handle("db:snapshots:create", async (_, messageId: string, changes: unknown[]) => {
+        const { createSnapshots } = await import("./database/repositories/snapshots");
+        return createSnapshots(messageId, changes as Parameters<typeof createSnapshots>[1]);
+    });
+
+    ipcMain.handle("db:snapshots:getByMessage", async (_, messageId: string) => {
+        const { getSnapshotsByMessage } = await import("./database/repositories/snapshots");
+        return getSnapshotsByMessage(messageId);
+    });
+
+    ipcMain.handle("db:snapshots:getAfterMessage", async (_, chatId: string, fromMessageId: string) => {
+        const { getSnapshotsAfterMessage } = await import("./database/repositories/snapshots");
+        return getSnapshotsAfterMessage(chatId, fromMessageId);
+    });
+
+    // --- ROLLBACK ---
+    ipcMain.handle("db:rollback", async (_, chatId: string, messageId: string, projectPath: string) => {
+        const { rollbackToMessage } = await import("./services/rollback");
+        return rollbackToMessage(chatId, messageId, projectPath);
+    });
+
+    // --- APP STATE ---
+    ipcMain.handle("db:appState:get", async () => {
+        const { getAppState } = await import("./database/repositories/app-state");
+        return getAppState();
+    });
+
+    ipcMain.handle("db:appState:save", async (_, state: Record<string, unknown>) => {
+        const { saveAppState } = await import("./database/repositories/app-state");
+        saveAppState(state);
+        return true;
+    });
 }

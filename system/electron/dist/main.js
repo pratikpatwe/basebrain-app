@@ -11,6 +11,7 @@ const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const ipc_1 = require("./ipc");
 const auth_1 = require("./auth");
+const database_1 = require("./database");
 electron_1.app.setAsDefaultProtocolClient("basebrain");
 let mainWindow = null;
 // Minimum window dimensions to prevent squeezed UI
@@ -71,6 +72,14 @@ async function createWindow() {
 }
 // Register IPC handlers and create window when app is ready
 electron_1.app.whenReady().then(() => {
+    // Initialize the database
+    try {
+        (0, database_1.initializeDatabase)();
+        console.log("[Main] Database initialized");
+    }
+    catch (error) {
+        console.error("[Main] Failed to initialize database:", error);
+    }
     // Register IPC handlers before creating window
     (0, ipc_1.registerIpcHandlers)(getMainWindow);
     // Create the main window
@@ -79,8 +88,13 @@ electron_1.app.whenReady().then(() => {
 // Quit when all windows are closed (except on macOS)
 electron_1.app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
+        (0, database_1.closeDatabase)();
         electron_1.app.quit();
     }
+});
+// Cleanup on before-quit
+electron_1.app.on("before-quit", () => {
+    (0, database_1.closeDatabase)();
 });
 // On macOS, re-create window when dock icon is clicked
 electron_1.app.on("activate", () => {

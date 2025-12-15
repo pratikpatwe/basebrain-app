@@ -39,3 +39,45 @@ electron_1.contextBridge.exposeInMainWorld("electronTools", {
     // Get available tool definitions
     getDefinitions: () => electron_1.ipcRenderer.invoke("tools:definitions"),
 });
+// Expose database API to renderer
+electron_1.contextBridge.exposeInMainWorld("electronDB", {
+    // --- Projects ---
+    projects: {
+        getOrCreate: (folderPath) => electron_1.ipcRenderer.invoke("db:projects:getOrCreate", folderPath),
+        getById: (id) => electron_1.ipcRenderer.invoke("db:projects:getById", id),
+        getByPath: (path) => electron_1.ipcRenderer.invoke("db:projects:getByPath", path),
+        getAll: () => electron_1.ipcRenderer.invoke("db:projects:getAll"),
+        delete: (id) => electron_1.ipcRenderer.invoke("db:projects:delete", id),
+    },
+    // --- Chats ---
+    chats: {
+        create: (projectId, title) => electron_1.ipcRenderer.invoke("db:chats:create", projectId, title),
+        getById: (id) => electron_1.ipcRenderer.invoke("db:chats:getById", id),
+        getByProject: (projectId) => electron_1.ipcRenderer.invoke("db:chats:getByProject", projectId),
+        getOthers: (currentProjectId) => electron_1.ipcRenderer.invoke("db:chats:getOthers", currentProjectId),
+        getAll: () => electron_1.ipcRenderer.invoke("db:chats:getAll"),
+        updateTitle: (id, title) => electron_1.ipcRenderer.invoke("db:chats:updateTitle", id, title),
+        delete: (id) => electron_1.ipcRenderer.invoke("db:chats:delete", id),
+    },
+    // --- Messages ---
+    messages: {
+        save: (message) => electron_1.ipcRenderer.invoke("db:messages:save", message),
+        update: (id, updates) => electron_1.ipcRenderer.invoke("db:messages:update", id, updates),
+        getByChat: (chatId) => electron_1.ipcRenderer.invoke("db:messages:getByChat", chatId),
+        getLastN: (chatId, n) => electron_1.ipcRenderer.invoke("db:messages:getLastN", chatId, n),
+        deleteFromPoint: (chatId, fromMessageId) => electron_1.ipcRenderer.invoke("db:messages:deleteFromPoint", chatId, fromMessageId),
+    },
+    // --- Snapshots ---
+    snapshots: {
+        create: (messageId, changes) => electron_1.ipcRenderer.invoke("db:snapshots:create", messageId, changes),
+        getByMessage: (messageId) => electron_1.ipcRenderer.invoke("db:snapshots:getByMessage", messageId),
+        getAfterMessage: (chatId, fromMessageId) => electron_1.ipcRenderer.invoke("db:snapshots:getAfterMessage", chatId, fromMessageId),
+    },
+    // --- Rollback ---
+    rollback: (chatId, messageId, projectPath) => electron_1.ipcRenderer.invoke("db:rollback", chatId, messageId, projectPath),
+    // --- App State ---
+    appState: {
+        get: () => electron_1.ipcRenderer.invoke("db:appState:get"),
+        save: (state) => electron_1.ipcRenderer.invoke("db:appState:save", state),
+    },
+});
