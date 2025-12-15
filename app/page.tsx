@@ -12,6 +12,7 @@ import { BuilderSidebar, useSidebarState } from "@/components/builder/sidebar";
 import { ChatArea } from "@/components/builder/chat/chat-area";
 import { BuilderMenu } from "@/components/builder/menu";
 import { BuilderHeader, HEADER_HEIGHT } from "@/components/builder/header";
+import { CodeEditor } from "@/components/builder/editor";
 
 // Constants for layout dimensions
 const EDITOR_DEFAULT_SIZE = 50;
@@ -219,6 +220,7 @@ export default function Home() {
                             className={`h-full rounded-xl bg-card/80 border border-border/30 overflow-hidden ${isEditorCollapsed ? "hidden" : ""
                                 }`}
                         >
+                            <CodeEditor />
                         </div>
                     </ResizablePanel>
                 </ResizablePanelGroup>
