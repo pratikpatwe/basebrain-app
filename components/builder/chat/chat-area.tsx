@@ -27,6 +27,8 @@ interface CommandState {
     status: "pending" | "running" | "completed" | "failed" | "terminated" | "rejected";
     output: string;
     exitCode: number | null;
+    requiresInput?: boolean;
+    inputPrompt?: string;
 }
 
 // Message type
@@ -44,6 +46,9 @@ interface Message {
         total_tokens: number;
     };
 }
+
+// Agent loop state
+type AgentState = "idle" | "thinking" | "acting" | "waiting_approval" | "waiting_command" | "observing";
 
 // Code block component with syntax highlighting and copy button
 function CodeBlock({ language, children }: { language: string; children: string }) {
@@ -233,9 +238,18 @@ function ThinkingDropdown({ thinking, isStreaming }: { thinking: string; isStrea
 export function ChatArea() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [agentState, setAgentState] = useState<AgentState>("idle");
     const [commandStates, setCommandStates] = useState<Map<string, CommandState>>(new Map());
     const scrollRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Track pending command that needs approval
+    const pendingCommandRef = useRef<{
+        commandId: string;
+        toolCallId: string;
+        resolve: (result: string) => void;
+    } | null>(null);
+
     const {
         projectPath,
         projectName,
@@ -247,45 +261,80 @@ export function ChatArea() {
     } = useProject();
 
     // Poll for command status updates
-    const pollCommandStatus = useCallback(async (commandId: string) => {
-        if (!window.electronDB) return;
+    const pollCommandStatus = useCallback(async (commandId: string): Promise<CommandState> => {
+        console.log("[Poll] Starting poll for command:", commandId);
 
-        const pollInterval = setInterval(async () => {
-            try {
-                const result = await window.electronDB!.commands.getStatus(commandId);
-
-                if (result.success && result.data) {
-                    const status = result.data.status as CommandState["status"];
-
-                    setCommandStates(prev => {
-                        const next = new Map(prev);
-                        next.set(commandId, {
-                            commandId,
-                            status,
-                            output: result.data?.output || "",
-                            exitCode: result.data?.exitCode ?? null,
-                        });
-                        return next;
-                    });
-
-                    // Stop polling if command is finished
-                    if (["completed", "failed", "terminated", "rejected"].includes(status)) {
-                        clearInterval(pollInterval);
-                    }
-                }
-            } catch (error) {
-                console.error("[Chat] Error polling command status:", error);
-                clearInterval(pollInterval);
+        return new Promise((resolve) => {
+            if (!window.electronDB) {
+                console.log("[Poll] No electronDB available");
+                resolve({
+                    commandId,
+                    status: "failed",
+                    output: "Electron not available",
+                    exitCode: null
+                });
+                return;
             }
-        }, 500);
 
-        // Return cleanup function
-        return () => clearInterval(pollInterval);
+            let pollCount = 0;
+            const pollInterval = setInterval(async () => {
+                try {
+                    pollCount++;
+                    const result = await window.electronDB!.commands.getStatus(commandId);
+
+                    console.log(`[Poll #${pollCount}] Status:`, result.data?.status, "Success:", result.success);
+
+                    if (result.success && result.data) {
+                        const status = result.data.status as CommandState["status"];
+                        const requiresInput = result.data.requiresInput || false;
+                        const inputPrompt = result.data.inputPrompt || "";
+
+                        setCommandStates(prev => {
+                            const next = new Map(prev);
+                            next.set(commandId, {
+                                commandId,
+                                status,
+                                output: result.data?.output || "",
+                                exitCode: result.data?.exitCode ?? null,
+                                requiresInput,
+                                inputPrompt,
+                            });
+                            return next;
+                        });
+
+                        // Resolve when command is finished
+                        if (["completed", "failed", "terminated", "rejected"].includes(status)) {
+                            console.log("[Poll] Command finished with status:", status);
+                            clearInterval(pollInterval);
+                            resolve({
+                                commandId,
+                                status,
+                                output: result.data?.output || "",
+                                exitCode: result.data?.exitCode ?? null,
+                            });
+                        }
+                    } else {
+                        console.log("[Poll] No result data or not success:", result);
+                    }
+                } catch (error) {
+                    console.error("[Poll] Error polling command status:", error);
+                    clearInterval(pollInterval);
+                    resolve({
+                        commandId,
+                        status: "failed",
+                        output: String(error),
+                        exitCode: null
+                    });
+                }
+            }, 500);
+        });
     }, []);
 
-    // Command handlers
+    // Handle command approval - this resumes the agent loop
     const handleApproveCommand = useCallback(async (commandId: string) => {
         if (!window.electronDB) return;
+
+        console.log("[Agent] Command approved:", commandId);
 
         // Update state to show running
         setCommandStates(prev => {
@@ -297,15 +346,38 @@ export function ChatArea() {
             return next;
         });
 
-        // Start polling for status updates
-        pollCommandStatus(commandId);
+        setAgentState("waiting_command");
 
-        // Fire and forget - the polling will handle updates
+        // Start execution and wait for completion
         window.electronDB.commands.approve(commandId);
+
+        // Wait for command to complete
+        const finalState = await pollCommandStatus(commandId);
+
+        console.log("[Agent] Command completed:", finalState);
+
+        // Resolve the pending promise if exists
+        if (pendingCommandRef.current?.commandId === commandId) {
+            const result = JSON.stringify({
+                success: finalState.status === "completed",
+                data: {
+                    commandId,
+                    status: finalState.status,
+                    output: finalState.output,
+                    exitCode: finalState.exitCode
+                },
+                error: finalState.status !== "completed" ? `Command ${finalState.status}` : undefined
+            });
+            pendingCommandRef.current.resolve(result);
+            pendingCommandRef.current = null;
+        }
     }, [pollCommandStatus]);
 
+    // Handle command rejection
     const handleRejectCommand = useCallback(async (commandId: string) => {
         if (!window.electronDB) return;
+
+        console.log("[Agent] Command rejected:", commandId);
 
         await window.electronDB.commands.reject(commandId);
 
@@ -317,6 +389,17 @@ export function ChatArea() {
             }
             return next;
         });
+
+        // Resolve the pending promise with rejection
+        if (pendingCommandRef.current?.commandId === commandId) {
+            const result = JSON.stringify({
+                success: false,
+                data: { commandId, status: "rejected" },
+                error: "Command was rejected by user"
+            });
+            pendingCommandRef.current.resolve(result);
+            pendingCommandRef.current = null;
+        }
     }, []);
 
     const handleTerminateCommand = useCallback(async (commandId: string) => {
@@ -334,6 +417,24 @@ export function ChatArea() {
         });
     }, []);
 
+    // Handle sending input to a running command
+    const handleSendInput = useCallback(async (commandId: string, input: string) => {
+        if (!window.electronDB) return;
+
+        console.log("[Agent] Sending input to command:", commandId, input);
+
+        await window.electronDB.commands.sendInput(commandId, input);
+
+        // Clear the requiresInput flag after sending
+        setCommandStates(prev => {
+            const next = new Map(prev);
+            const current = next.get(commandId);
+            if (current) {
+                next.set(commandId, { ...current, requiresInput: false, inputPrompt: "" });
+            }
+            return next;
+        });
+    }, []);
 
     // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
@@ -445,21 +546,15 @@ export function ChatArea() {
                 // Try to read existing file content
                 try {
                     const readResult = await window.electronTools.execute('read_file', { path: filePath }, projectPath);
-                    console.log("[Snapshot] Read file result:", { path: filePath, success: readResult.success, hasData: !!readResult.data });
 
                     if (readResult.success && readResult.data) {
                         contentBefore = (readResult.data as { content: string }).content;
                         action = toolName === 'delete_file' ? 'deleted' : 'modified';
-                        console.log("[Snapshot] File exists, will capture as:", action, "content length:", contentBefore?.length);
                     } else {
-                        // File doesn't exist, will be created
                         action = 'created';
-                        console.log("[Snapshot] File doesn't exist, will be created");
                     }
                 } catch (err) {
-                    // File doesn't exist, will be created
                     action = 'created';
-                    console.log("[Snapshot] Error reading file, assuming new:", err);
                 }
 
                 // Store snapshot for later saving
@@ -468,7 +563,6 @@ export function ChatArea() {
                     action,
                     content_before: contentBefore || undefined,
                 });
-                console.log("[Snapshot] Stored pending snapshot:", { path: filePath, action, hasContent: !!contentBefore });
             }
 
             const result = await window.electronTools.execute(toolName, args, projectPath);
@@ -535,7 +629,322 @@ export function ChatArea() {
         }
     };
 
-    // Handle sending a message with tool calling support
+    // API message type for the agent loop
+    type ApiMessage = { role: "user" | "assistant"; content: string; tool_calls?: ToolCall[] };
+
+    // Run a single step of the agent loop
+    const runAgentStep = async (
+        apiMessages: ApiMessage[],
+        assistantMessageId: string,
+        chatId: string,
+        accumulatedToolCalls: ToolCall[],
+        accumulatedToolResults: { tool_call_id: string; name: string; result: string }[],
+        accumulatedThinking: string,
+        totalPromptTokens: number,
+        totalCompletionTokens: number,
+        fullContent: string,
+        waitingForCommand: boolean = false
+    ): Promise<{
+        shouldContinue: boolean;
+        apiMessages: ApiMessage[];
+        accumulatedToolCalls: ToolCall[];
+        accumulatedToolResults: { tool_call_id: string; name: string; result: string }[];
+        accumulatedThinking: string;
+        totalPromptTokens: number;
+        totalCompletionTokens: number;
+        fullContent: string;
+    }> => {
+        // Create new abort controller for this request
+        abortControllerRef.current = new AbortController();
+
+        setAgentState("thinking");
+
+        // Prepare tool results if we have any from previous step
+        const currentToolResults = accumulatedToolResults.length > 0
+            ? accumulatedToolResults.slice(-1).map(r => ({ tool_call_id: r.tool_call_id, result: r.result }))
+            : undefined;
+
+        // Call the API
+        const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: apiMessages,
+                projectPath,
+                toolResults: currentToolResults,
+                waitingForCommand
+            }),
+            signal: abortControllerRef.current.signal,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to get response");
+        }
+
+        // Handle streaming response
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+            throw new Error("No response body");
+        }
+
+        let toolCalls: ToolCall[] = [];
+        let hasToolCalls = false;
+        let requiresApproval = false;
+        let stepThinking = "";
+        let stepContent = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+
+            for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+
+                        if (data.type === "thinking_start") {
+                            // Thinking started
+                        } else if (data.type === "thinking") {
+                            stepThinking += data.content;
+                            accumulatedThinking += data.content;
+                            // Update thinking in the message
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === assistantMessageId
+                                        ? { ...msg, thinking: accumulatedThinking }
+                                        : msg
+                                )
+                            );
+                        } else if (data.type === "thinking_end") {
+                            // Thinking ended
+                        } else if (data.type === "content") {
+                            stepContent += data.content;
+                            fullContent += data.content;
+                            // Update the assistant message with new content
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === assistantMessageId
+                                        ? {
+                                            ...msg,
+                                            content: fullContent,
+                                            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
+                                            tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
+                                        }
+                                        : msg
+                                )
+                            );
+                        } else if (data.type === "tool_calls") {
+                            toolCalls = data.tool_calls;
+                            hasToolCalls = true;
+                            requiresApproval = data.requiresApproval || false;
+
+                            // Accumulate tool calls
+                            accumulatedToolCalls = [...accumulatedToolCalls, ...toolCalls];
+
+                            // Update message with accumulated tool calls
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === assistantMessageId
+                                        ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
+                                        : msg
+                                )
+                            );
+                        } else if (data.type === "done") {
+                            hasToolCalls = data.hasToolCalls;
+
+                            // Accumulate tokens
+                            if (data.usage) {
+                                totalPromptTokens += data.usage.prompt_tokens || 0;
+                                totalCompletionTokens += data.usage.completion_tokens || 0;
+                            }
+
+                            // Update with accumulated usage data
+                            setMessages((prev) =>
+                                prev.map((msg) =>
+                                    msg.id === assistantMessageId
+                                        ? {
+                                            ...msg,
+                                            usage: {
+                                                prompt_tokens: totalPromptTokens,
+                                                completion_tokens: totalCompletionTokens,
+                                                total_tokens: totalPromptTokens + totalCompletionTokens
+                                            },
+                                            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
+                                            tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
+                                        }
+                                        : msg
+                                )
+                            );
+                        } else if (data.type === "error") {
+                            throw new Error(data.error);
+                        }
+                    } catch (parseError) {
+                        // Skip invalid JSON lines
+                    }
+                }
+            }
+        }
+
+        // If there are tool calls, execute them
+        if (hasToolCalls && toolCalls.length > 0) {
+            setAgentState("acting");
+
+            for (const toolCall of toolCalls) {
+                const args = JSON.parse(toolCall.function.arguments);
+
+                // Special handling for run_command - STOP and wait for user approval
+                if (toolCall.function.name === "run_command") {
+                    console.log("[Agent] run_command detected - stopping for approval");
+
+                    const result = await executeTool(toolCall.function.name, args);
+                    const resultData = JSON.parse(result);
+
+                    if (resultData.success && resultData.data?.commandId) {
+                        const commandId = resultData.data.commandId;
+
+                        // Add to command states for inline UI display
+                        setCommandStates(prev => {
+                            const next = new Map(prev);
+                            next.set(commandId, {
+                                commandId,
+                                status: "pending",
+                                output: "",
+                                exitCode: null,
+                            });
+                            return next;
+                        });
+
+                        // Add initial tool result IMMEDIATELY so UI can get commandId for buttons
+                        accumulatedToolResults = [...accumulatedToolResults, {
+                            tool_call_id: toolCall.id,
+                            name: toolCall.function.name,
+                            result: result  // Initial result with commandId
+                        }];
+
+                        // Update message with tool results so buttons appear
+                        setMessages((prev) =>
+                            prev.map((msg) =>
+                                msg.id === assistantMessageId
+                                    ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
+                                    : msg
+                            )
+                        );
+
+                        setAgentState("waiting_approval");
+
+                        // Create a promise that will be resolved when user approves/rejects
+                        const commandResult = await new Promise<string>((resolve) => {
+                            pendingCommandRef.current = {
+                                commandId,
+                                toolCallId: toolCall.id,
+                                resolve
+                            };
+                        });
+
+                        // Update tool result with final command output
+                        accumulatedToolResults = accumulatedToolResults.map(r =>
+                            r.tool_call_id === toolCall.id
+                                ? { ...r, result: commandResult }
+                                : r
+                        );
+
+                        // Update message with final tool results
+                        setMessages((prev) =>
+                            prev.map((msg) =>
+                                msg.id === assistantMessageId
+                                    ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
+                                    : msg
+                            )
+                        );
+
+                        // Add assistant message with tool calls to history
+                        apiMessages.push({
+                            role: "assistant",
+                            content: stepContent,
+                            tool_calls: toolCalls
+                        });
+
+                        // Continue the loop with the command result
+                        return {
+                            shouldContinue: true,
+                            apiMessages,
+                            accumulatedToolCalls,
+                            accumulatedToolResults,
+                            accumulatedThinking,
+                            totalPromptTokens,
+                            totalCompletionTokens,
+                            fullContent
+                        };
+                    } else {
+                        // Command preparation failed
+                        accumulatedToolResults = [...accumulatedToolResults, {
+                            tool_call_id: toolCall.id,
+                            name: toolCall.function.name,
+                            result
+                        }];
+                    }
+                } else {
+                    // Execute regular tool immediately
+                    const result = await executeTool(toolCall.function.name, args);
+                    accumulatedToolResults = [...accumulatedToolResults, {
+                        tool_call_id: toolCall.id,
+                        name: toolCall.function.name,
+                        result
+                    }];
+                }
+            }
+
+            // Update message with accumulated tool data
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantMessageId
+                        ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
+                        : msg
+                )
+            );
+
+            // Add assistant message with tool calls to history
+            apiMessages.push({
+                role: "assistant",
+                content: stepContent,
+                tool_calls: toolCalls
+            });
+
+            setAgentState("observing");
+
+            // Continue the loop
+            return {
+                shouldContinue: true,
+                apiMessages,
+                accumulatedToolCalls,
+                accumulatedToolResults,
+                accumulatedThinking,
+                totalPromptTokens,
+                totalCompletionTokens,
+                fullContent
+            };
+        } else {
+            // No more tool calls, we're done
+            return {
+                shouldContinue: false,
+                apiMessages,
+                accumulatedToolCalls,
+                accumulatedToolResults,
+                accumulatedThinking,
+                totalPromptTokens,
+                totalCompletionTokens,
+                fullContent
+            };
+        }
+    };
+
+    // Handle sending a message - starts the agent loop
     const handleSendMessage = async (content: string) => {
         if (!content.trim() || isLoading) return;
 
@@ -573,286 +982,129 @@ export function ChatArea() {
 
         setMessages((prev) => [...prev, userMessage, assistantMessage]);
         setIsLoading(true);
+        setAgentState("thinking");
 
         try {
             // Prepare messages for API (include history for context)
-            let apiMessages = [...messages, userMessage].map((msg) => ({
-                role: msg.role,
+            let apiMessages: ApiMessage[] = [...messages, userMessage].map((msg) => ({
+                role: msg.role as "user" | "assistant",
                 content: msg.content,
                 ...(msg.tool_calls && { tool_calls: msg.tool_calls }),
             }));
 
-            let continueLoop = true;
-            let currentToolResults: { tool_call_id: string; result: string }[] = [];
-            let fullContent = "";
-
-            // Accumulated tool data - persists across loop iterations
+            // Initialize accumulator variables
             let accumulatedToolCalls: ToolCall[] = [];
             let accumulatedToolResults: { tool_call_id: string; name: string; result: string }[] = [];
-
-            // Accumulated token usage across all API calls
+            let accumulatedThinking = "";
             let totalPromptTokens = 0;
             let totalCompletionTokens = 0;
+            let fullContent = "";
 
-            // Accumulated thinking content
-            let accumulatedThinking = "";
+            // Run the agent loop with safeguards
+            let continueLoop = true;
+            let waitingForCommand = false;
+            let iterationCount = 0;
+            const MAX_ITERATIONS = 15; // Prevent infinite loops
+            const recentActions: string[] = []; // Track recent actions for loop detection
 
-            // Tool calling loop
             while (continueLoop) {
-                // Create new abort controller for this request
-                abortControllerRef.current = new AbortController();
-
-                // Call the API with streaming
-                const response = await fetch("/api/chat", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        messages: apiMessages,
-                        projectPath,
-                        toolResults: currentToolResults.length > 0 ? currentToolResults : undefined
-                    }),
-                    signal: abortControllerRef.current.signal,
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || "Failed to get response");
-                }
-
-                // Handle streaming response
-                const reader = response.body?.getReader();
-                const decoder = new TextDecoder();
-
-                if (!reader) {
-                    throw new Error("No response body");
-                }
-
-                let toolCalls: ToolCall[] = [];
-                let hasToolCalls = false;
-                let thinkingContent = "";
-
-                while (true) {
-                    const { done, value } = await reader.read();
-
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split("\n");
-
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            try {
-                                const data = JSON.parse(line.slice(6));
-
-                                if (data.type === "thinking_start") {
-                                    // Thinking started
-                                } else if (data.type === "thinking") {
-                                    thinkingContent += data.content;
-                                    accumulatedThinking += data.content;
-                                    // Update thinking in the message
-                                    setMessages((prev) =>
-                                        prev.map((msg) =>
-                                            msg.id === assistantMessageId
-                                                ? { ...msg, thinking: accumulatedThinking }
-                                                : msg
-                                        )
-                                    );
-                                } else if (data.type === "thinking_end") {
-                                    // Thinking ended
-                                } else if (data.type === "content") {
-                                    fullContent += data.content;
-                                    // Update the assistant message with new content - preserve tool data
-                                    setMessages((prev) =>
-                                        prev.map((msg) =>
-                                            msg.id === assistantMessageId
-                                                ? {
-                                                    ...msg,
-                                                    content: fullContent,
-                                                    tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
-                                                    tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
-                                                }
-                                                : msg
-                                        )
-                                    );
-                                } else if (data.type === "tool_calls") {
-                                    toolCalls = data.tool_calls;
-                                    hasToolCalls = true;
-
-                                    // Accumulate tool calls
-                                    accumulatedToolCalls = [...accumulatedToolCalls, ...toolCalls];
-
-                                    // Update message with accumulated tool calls
-                                    setMessages((prev) =>
-                                        prev.map((msg) =>
-                                            msg.id === assistantMessageId
-                                                ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
-                                                : msg
-                                        )
-                                    );
-                                } else if (data.type === "done") {
-                                    hasToolCalls = data.hasToolCalls;
-
-                                    // Accumulate tokens from this API call
-                                    if (data.usage) {
-                                        totalPromptTokens += data.usage.prompt_tokens || 0;
-                                        totalCompletionTokens += data.usage.completion_tokens || 0;
-                                    }
-
-                                    // Update with accumulated usage data - preserve tool data
-                                    setMessages((prev) =>
-                                        prev.map((msg) =>
-                                            msg.id === assistantMessageId
-                                                ? {
-                                                    ...msg,
-                                                    usage: {
-                                                        prompt_tokens: totalPromptTokens,
-                                                        completion_tokens: totalCompletionTokens,
-                                                        total_tokens: totalPromptTokens + totalCompletionTokens
-                                                    },
-                                                    tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : msg.tool_calls,
-                                                    tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : msg.tool_results
-                                                }
-                                                : msg
-                                        )
-                                    );
-                                } else if (data.type === "error") {
-                                    throw new Error(data.error);
-                                }
-                            } catch (parseError) {
-                                // Skip invalid JSON lines
-                            }
-                        }
-                    }
-                }
-
-                // If there are tool calls, execute them and continue
-                if (hasToolCalls && toolCalls.length > 0) {
-                    const toolResults: { tool_call_id: string; name: string; result: string }[] = [];
-
-                    for (const toolCall of toolCalls) {
-                        const args = JSON.parse(toolCall.function.arguments);
-
-                        // Special handling for run_command - needs user approval
-                        if (toolCall.function.name === "run_command") {
-                            // Check if there's already a pending or running command
-                            const hasActiveCommand = Array.from(commandStates.values()).some(cmd =>
-                                cmd.status === "pending" || cmd.status === "running"
-                            );
-
-                            if (hasActiveCommand) {
-                                // Block new command - tell AI to wait
-                                toolResults.push({
-                                    tool_call_id: toolCall.id,
-                                    name: toolCall.function.name,
-                                    result: JSON.stringify({
-                                        success: false,
-                                        error: "A command is already pending or running. Please wait for user to approve/reject or for the current command to complete before running another command."
-                                    })
-                                });
-                                continue;
-                            }
-
-                            const result = await executeTool(toolCall.function.name, args);
-                            const resultData = JSON.parse(result);
-
-                            if (resultData.success && resultData.data?.commandId) {
-                                // Add to command states for inline UI display
-                                setCommandStates(prev => {
-                                    const next = new Map(prev);
-                                    next.set(resultData.data.commandId, {
-                                        commandId: resultData.data.commandId,
-                                        status: "pending",
-                                        output: "",
-                                        exitCode: null,
-                                    });
-                                    return next;
-                                });
-                            }
-
-                            toolResults.push({
-                                tool_call_id: toolCall.id,
-                                name: toolCall.function.name,
-                                result
-                            });
-                        } else {
-                            const result = await executeTool(toolCall.function.name, args);
-                            toolResults.push({
-                                tool_call_id: toolCall.id,
-                                name: toolCall.function.name,
-                                result
-                            });
-                        }
-                    }
-
-                    // Accumulate tool results
-                    accumulatedToolResults = [...accumulatedToolResults, ...toolResults];
-
-                    // Update message with accumulated tool data
-                    setMessages((prev) =>
-                        prev.map((msg) =>
+                // Check iteration limit
+                iterationCount++;
+                if (iterationCount > MAX_ITERATIONS) {
+                    console.warn("[Agent] Max iterations reached, stopping loop");
+                    setMessages(prev =>
+                        prev.map(msg =>
                             msg.id === assistantMessageId
-                                ? { ...msg, tool_calls: accumulatedToolCalls, tool_results: accumulatedToolResults }
+                                ? { ...msg, content: msg.content + "\n\n⚠️ Reached maximum step limit. Please continue with a new message." }
                                 : msg
                         )
                     );
-
-                    // Add assistant message with tool calls to history
-                    apiMessages.push({
-                        role: "assistant",
-                        content: fullContent,
-                        tool_calls: toolCalls
-                    });
-
-                    // Prepare tool results for next iteration
-                    currentToolResults = toolResults.map(r => ({
-                        tool_call_id: r.tool_call_id,
-                        result: r.result
-                    }));
-
-                    // Continue the loop
-                    continueLoop = true;
-                } else {
-                    // No more tool calls, we're done
-                    continueLoop = false;
-
-                    // Save the final assistant message to database
-                    const finalAssistantMessage: Message = {
-                        id: assistantMessageId,
-                        role: "assistant",
-                        content: fullContent,
-                        timestamp: new Date(),
-                        thinking: accumulatedThinking || undefined,
-                        tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
-                        tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : undefined,
-                        usage: {
-                            prompt_tokens: totalPromptTokens,
-                            completion_tokens: totalCompletionTokens,
-                            total_tokens: totalPromptTokens + totalCompletionTokens,
-                        },
-                    };
-
-                    await saveMessageToDB(finalAssistantMessage, chatId);
-
-                    // Save file snapshots - associated with the user message (rollback point)
-                    if (savedUserMessageId) {
-                        await savePendingSnapshots(savedUserMessageId);
-                    }
-
-                    // Refresh chats to update title in sidebar (title is auto-generated from first message)
-                    await refreshChats();
+                    break;
                 }
+
+                const result = await runAgentStep(
+                    apiMessages,
+                    assistantMessageId,
+                    chatId,
+                    accumulatedToolCalls,
+                    accumulatedToolResults,
+                    accumulatedThinking,
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    fullContent,
+                    waitingForCommand
+                );
+
+                // Detect loops - if the same action is repeated 3 times, stop
+                if (result.accumulatedToolCalls.length > 0) {
+                    const lastAction = result.accumulatedToolCalls[result.accumulatedToolCalls.length - 1];
+                    const actionKey = `${lastAction.function.name}:${lastAction.function.arguments}`;
+                    recentActions.push(actionKey);
+
+                    // Keep only last 5 actions
+                    if (recentActions.length > 5) recentActions.shift();
+
+                    // Check if same action repeated 3 times
+                    const sameActionCount = recentActions.filter(a => a === actionKey).length;
+                    if (sameActionCount >= 3) {
+                        console.warn("[Agent] Loop detected - same action repeated 3 times:", lastAction.function.name);
+                        setMessages(prev =>
+                            prev.map(msg =>
+                                msg.id === assistantMessageId
+                                    ? { ...msg, content: msg.content + "\n\n⚠️ Detected repeated action. Stopping to prevent loop." }
+                                    : msg
+                            )
+                        );
+                        break;
+                    }
+                }
+
+                continueLoop = result.shouldContinue;
+                apiMessages = result.apiMessages;
+                accumulatedToolCalls = result.accumulatedToolCalls;
+                accumulatedToolResults = result.accumulatedToolResults;
+                accumulatedThinking = result.accumulatedThinking;
+                totalPromptTokens = result.totalPromptTokens;
+                totalCompletionTokens = result.totalCompletionTokens;
+                fullContent = result.fullContent;
+
+                // If we just processed a command, mark that we're continuing after command
+                waitingForCommand = accumulatedToolResults.some(r => r.name === "run_command");
             }
+
+            // Save the final assistant message to database
+            const finalAssistantMessage: Message = {
+                id: assistantMessageId,
+                role: "assistant",
+                content: fullContent,
+                timestamp: new Date(),
+                thinking: accumulatedThinking || undefined,
+                tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+                tool_results: accumulatedToolResults.length > 0 ? accumulatedToolResults : undefined,
+                usage: {
+                    prompt_tokens: totalPromptTokens,
+                    completion_tokens: totalCompletionTokens,
+                    total_tokens: totalPromptTokens + totalCompletionTokens,
+                },
+            };
+
+            await saveMessageToDB(finalAssistantMessage, chatId);
+
+            // Save file snapshots - associated with the user message (rollback point)
+            if (savedUserMessageId) {
+                await savePendingSnapshots(savedUserMessageId);
+            }
+
+            // Refresh chats to update title in sidebar
+            await refreshChats();
+
         } catch (error) {
             // Check if this was an abort (user stopped generation)
             if (error instanceof Error && error.name === 'AbortError') {
                 console.log("[Chat] Generation stopped by user");
-                // Update the assistant message to indicate it was stopped
                 setMessages((prev) => {
                     const lastMsg = prev[prev.length - 1];
                     if (lastMsg && lastMsg.role === "assistant") {
-                        // Keep whatever content was generated, just mark as stopped
                         return prev.slice(0, -1).concat({
                             ...lastMsg,
                             content: lastMsg.content + "\n\n*[Generation stopped by user]*",
@@ -862,7 +1114,6 @@ export function ChatArea() {
                 });
             } else {
                 console.error("Chat error:", error);
-                // Update the assistant message with error
                 setMessages((prev) => {
                     const lastMsg = prev[prev.length - 1];
                     if (lastMsg && lastMsg.role === "assistant" && !lastMsg.content) {
@@ -877,6 +1128,7 @@ export function ChatArea() {
         } finally {
             abortControllerRef.current = null;
             setIsLoading(false);
+            setAgentState("idle");
         }
     };
 
@@ -989,6 +1241,16 @@ export function ChatArea() {
                                                             style={{ filter: "brightness(0) saturate(100%) invert(37%) sepia(98%) saturate(1639%) hue-rotate(209deg) brightness(96%) contrast(93%)" }}
                                                         />
                                                     </div>
+                                                    {/* Agent state indicator */}
+                                                    {isLoading && messages[messages.length - 1]?.id === message.id && agentState !== "idle" && (
+                                                        <span className="text-xs text-zinc-500 uppercase tracking-wider">
+                                                            {agentState === "thinking" && "Thinking..."}
+                                                            {agentState === "acting" && "Executing..."}
+                                                            {agentState === "waiting_approval" && "Waiting for approval"}
+                                                            {agentState === "waiting_command" && "Running command..."}
+                                                            {agentState === "observing" && "Observing..."}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {/* Thinking dropdown - show if thinking exists */}
@@ -1005,6 +1267,7 @@ export function ChatArea() {
                                                         onApproveCommand={handleApproveCommand}
                                                         onRejectCommand={handleRejectCommand}
                                                         onTerminateCommand={handleTerminateCommand}
+                                                        onSendInput={handleSendInput}
                                                     />
                                                 )}
 

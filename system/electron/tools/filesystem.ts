@@ -143,6 +143,16 @@ export async function writeFile(
             fs.mkdirSync(parentDir, { recursive: true });
         }
 
+        // Ensure content is a string
+        if (typeof content !== 'string') {
+            // Try to convert to string if it's an object
+            if (content && typeof content === 'object') {
+                content = JSON.stringify(content, null, 2);
+            } else {
+                content = String(content ?? '');
+            }
+        }
+
         // Calculate line changes
         let linesAdded = 0;
         let linesRemoved = 0;

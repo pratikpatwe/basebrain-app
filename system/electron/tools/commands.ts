@@ -69,25 +69,72 @@ function emitInputRequired(cmdId: string, prompt: string) {
     inputRequiredCallbacks.forEach(cb => cb(cmdId, prompt));
 }
 
+// Strip ANSI escape codes from output
+function stripAnsi(str: string): string {
+    // Matches all ANSI escape sequences
+    const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+    // Also strip other control characters and common escape patterns
+    return str
+        .replace(ansiRegex, '')
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+        .replace(/\x1b\][^\x07]*\x07/g, '')
+        .replace(/\x1b[PX^_].*?\x1b\\/g, '')
+        .replace(/\x1b\[[?]?[0-9;]*[hl]/g, '')
+        .replace(/\[\?[0-9]+[hl]/g, '')
+        .replace(/\[[0-9]+m/g, '')
+        .replace(/\[\?[0-9]+[a-z]/gi, '');
+}
+
 // Patterns that indicate the command is waiting for input
+// These should be very specific to avoid false positives
 const INPUT_PATTERNS = [
-    /\[y\/n\]/i,
-    /\[yes\/no\]/i,
-    /\(y\/n\)/i,
-    /\(yes\/no\)/i,
-    /press enter/i,
-    /continue\?/i,
-    /proceed\?/i,
-    /password:/i,
-    /passphrase:/i,
-    /Are you sure/i,
-    /Do you want to/i,
-    /\? \[Y\/n\]/i,
-    /\? \[n\/Y\]/i,
+    /\[y\/n\]\s*$/i,              // Ends with [y/n]
+    /\[yes\/no\]\s*$/i,
+    /\(y\/n\)\s*$/i,
+    /\(yes\/no\)\s*$/i,
+    /press enter to continue/i,
+    /press any key/i,
+    /password:\s*$/i,
+    /passphrase:\s*$/i,
+    /\? \[Y\/n\]\s*$/i,
+    /\? \[n\/Y\]\s*$/i,
+    /Which.*would you like.*\?\s*$/i,   // Interactive selection ending with ?
+    /What.*would you like.*\?\s*$/i,
+    /\(Use arrow keys\)/i,
+    /Return to submit/i,
+    /❯\s+\w/,                     // Selection indicator followed by option text
+];
+
+// Patterns that indicate this is NOT an input prompt (error messages, suggestions, etc.)
+const EXCLUDE_PATTERNS = [
+    /suggestion:/i,
+    /error:/i,
+    /failed/i,
+    /unable to/i,
+    /cannot/i,
+    /could not/i,
+    /try again/i,
+    /Starting\.\.\./i,
+    /Compiling/i,
+    /Building/i,
+    /✓/,
+    /✗/,
+    /×/,
 ];
 
 function detectInputRequired(output: string): string | null {
-    const lastLines = output.split("\n").slice(-5).join("\n");
+    // Clean the output first
+    const cleanOutput = stripAnsi(output);
+    const lastLines = cleanOutput.split("\n").slice(-10).join("\n");
+
+    // Check exclusion patterns first - if any match, this is not an input prompt
+    for (const excludePattern of EXCLUDE_PATTERNS) {
+        if (excludePattern.test(lastLines)) {
+            return null;
+        }
+    }
+
+    // Check input patterns
     for (const pattern of INPUT_PATTERNS) {
         if (pattern.test(lastLines)) {
             return lastLines.trim();
@@ -196,16 +243,23 @@ async function executeApprovedCommand(cmdId: string): Promise<ToolResult> {
         const shell = isWindows ? "powershell.exe" : "/bin/bash";
         const shellArgs = isWindows ? ["-Command", execution.command] : ["-c", execution.command];
 
+        // Don't force color output - we can't render it properly
+        const env = { ...process.env };
+        delete env.FORCE_COLOR;
+        env.NO_COLOR = "1";
+        env.TERM = "dumb";
+
         const childProcess = spawn(shell, shellArgs, {
             cwd: execution.cwd,
-            env: { ...process.env, FORCE_COLOR: "1" },
+            env,
             stdio: ["pipe", "pipe", "pipe"],
         });
 
         execution.process = childProcess;
 
         childProcess.stdout.on("data", (data: Buffer) => {
-            const chunk = data.toString();
+            const rawChunk = data.toString();
+            const chunk = stripAnsi(rawChunk);
             execution.output += chunk;
             emitOutput(cmdId, chunk, false);
 
@@ -219,16 +273,19 @@ async function executeApprovedCommand(cmdId: string): Promise<ToolResult> {
         });
 
         childProcess.stderr.on("data", (data: Buffer) => {
-            const chunk = data.toString();
+            const rawChunk = data.toString();
+            const chunk = stripAnsi(rawChunk);
             execution.output += chunk;
             emitOutput(cmdId, chunk, true);
         });
 
         childProcess.on("close", (code: number | null) => {
+            console.log(`[Command ${cmdId}] Closed with exit code:`, code);
             execution.status = code === 0 ? "completed" : "failed";
             execution.exitCode = code;
             execution.endTime = Date.now();
             execution.requiresInput = false;
+            console.log(`[Command ${cmdId}] Status set to:`, execution.status);
             emitStatus(cmdId, execution.status);
 
             resolve({

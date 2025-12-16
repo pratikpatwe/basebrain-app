@@ -39,6 +39,8 @@ interface CommandState {
     status: "pending" | "approved" | "running" | "completed" | "failed" | "terminated" | "rejected";
     output: string;
     exitCode: number | null;
+    requiresInput?: boolean;
+    inputPrompt?: string;
 }
 
 interface FileOpsProps {
@@ -48,6 +50,7 @@ interface FileOpsProps {
     onApproveCommand?: (commandId: string) => void;
     onRejectCommand?: (commandId: string) => void;
     onTerminateCommand?: (commandId: string) => void;
+    onSendInput?: (commandId: string, input: string) => void;
 }
 
 // Get icon and color for each tool type
@@ -188,6 +191,7 @@ function InlineCommand({
     onApprove,
     onReject,
     onTerminate,
+    onSendInput,
 }: {
     toolCall: ToolCall;
     result?: { tool_call_id: string; name: string; result: string };
@@ -195,9 +199,12 @@ function InlineCommand({
     onApprove?: () => void;
     onReject?: () => void;
     onTerminate?: () => void;
+    onSendInput?: (input: string) => void;
 }) {
     const [isExpanded, setIsExpanded] = useState(true);
+    const [inputValue, setInputValue] = useState("");
     const outputRef = useRef<HTMLPreElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     let args: Record<string, unknown> = {};
     try {
@@ -213,11 +220,15 @@ function InlineCommand({
     let status: CommandState["status"] = "pending";
     let output = "";
     let exitCode: number | null = null;
+    let requiresInput = false;
+    let inputPrompt = "";
 
     if (commandState) {
         status = commandState.status;
         output = commandState.output;
         exitCode = commandState.exitCode;
+        requiresInput = commandState.requiresInput || false;
+        inputPrompt = commandState.inputPrompt || "";
     } else if (result) {
         try {
             const parsed = JSON.parse(result.result);
@@ -342,6 +353,68 @@ function InlineCommand({
                         </pre>
                     )}
 
+                    {/* Input required - show input field */}
+                    {requiresInput && onSendInput && (
+                        <div className="px-3 py-2.5 border-t border-zinc-600/50 bg-zinc-800/50">
+                            <div className="text-xs text-zinc-400 mb-2 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-zinc-400 animate-pulse" />
+                                Input required
+                            </div>
+                            <form
+                                className="flex items-center gap-2"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (inputValue.trim()) {
+                                        onSendInput(inputValue);
+                                        setInputValue("");
+                                    }
+                                }}
+                            >
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    placeholder="Type your response..."
+                                    className="flex-1 h-8 px-3 rounded bg-zinc-900 border border-zinc-600 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
+                                    autoFocus
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!inputValue.trim()}
+                                    className="h-8 px-3 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                    Send
+                                </button>
+                            </form>
+                            {/* Quick action buttons for common prompts */}
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-zinc-500">Quick:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => onSendInput("y")}
+                                    className="h-6 px-2 rounded bg-zinc-700 hover:bg-zinc-600 text-xs text-zinc-300 transition-colors cursor-pointer"
+                                >
+                                    Yes (y)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onSendInput("n")}
+                                    className="h-6 px-2 rounded bg-zinc-700 hover:bg-zinc-600 text-xs text-zinc-300 transition-colors cursor-pointer"
+                                >
+                                    No (n)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onSendInput("")}
+                                    className="h-6 px-2 rounded bg-zinc-700 hover:bg-zinc-600 text-xs text-zinc-300 transition-colors cursor-pointer"
+                                >
+                                    Enter ↵
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Status footer */}
                     {isFinished && (
                         <div className="px-3 py-2 border-t border-zinc-700/50 flex items-center justify-between bg-zinc-800/30">
@@ -366,6 +439,7 @@ export function FileOps({
     onApproveCommand,
     onRejectCommand,
     onTerminateCommand,
+    onSendInput,
 }: FileOpsProps) {
     if (!toolCalls || toolCalls.length === 0) return null;
 
@@ -397,6 +471,7 @@ export function FileOps({
                             onApprove={commandId ? () => onApproveCommand?.(commandId) : undefined}
                             onReject={commandId ? () => onRejectCommand?.(commandId) : undefined}
                             onTerminate={commandId ? () => onTerminateCommand?.(commandId) : undefined}
+                            onSendInput={commandId ? (input: string) => onSendInput?.(commandId, input) : undefined}
                         />
                     );
                 }
