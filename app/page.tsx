@@ -12,7 +12,7 @@ import { BuilderSidebar, useSidebarState } from "@/components/builder/sidebar";
 import { ChatArea } from "@/components/builder/chat/chat-area";
 import { BuilderMenu } from "@/components/builder/menu";
 import { BuilderHeader, HEADER_HEIGHT } from "@/components/builder/header";
-import { CodeEditor } from "@/components/builder/editor";
+import { CodeEditor, CodeEditorRef } from "@/components/builder/editor";
 
 // Constants for layout dimensions
 const EDITOR_DEFAULT_SIZE = 50;
@@ -24,6 +24,7 @@ export default function Home() {
     const searchInputRef = React.useRef<HTMLInputElement>(null);
     const editorPanelRef = React.useRef<ImperativePanelHandle>(null);
     const chatPanelRef = React.useRef<ImperativePanelHandle>(null);
+    const codeEditorRef = React.useRef<CodeEditorRef>(null);
     const [isEditorCollapsed, setIsEditorCollapsed] = React.useState(false);
 
     // Panel sizes (loaded from DB)
@@ -133,6 +134,18 @@ export default function Home() {
         }
     };
 
+    // Handle opening a preview in the editor
+    const handleOpenPreview = (url: string, name: string) => {
+        // Only open the editor panel if it's currently collapsed
+        if (isEditorCollapsed && editorPanelRef.current) {
+            editorPanelRef.current.resize(EDITOR_DEFAULT_SIZE);
+        }
+        // Then open the preview tab
+        if (codeEditorRef.current) {
+            codeEditorRef.current.openPreview(url, name);
+        }
+    };
+
     // Handle editor panel collapse/expand events
     const handleEditorCollapse = React.useCallback(async () => {
         setIsEditorCollapsed(true);
@@ -198,7 +211,7 @@ export default function Home() {
                             <ChatArea />
 
                             {/* Bottom Dock Menu */}
-                            <BuilderMenu onOpenEditor={openEditor} />
+                            <BuilderMenu onOpenEditor={openEditor} onOpenPreview={handleOpenPreview} />
                         </div>
                     </ResizablePanel>
 
@@ -220,7 +233,7 @@ export default function Home() {
                             className={`h-full rounded-xl bg-card/80 border border-border/30 overflow-hidden ${isEditorCollapsed ? "hidden" : ""
                                 }`}
                         >
-                            <CodeEditor />
+                            <CodeEditor ref={codeEditorRef} />
                         </div>
                     </ResizablePanel>
                 </ResizablePanelGroup>

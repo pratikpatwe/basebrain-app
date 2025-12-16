@@ -1,11 +1,23 @@
 /**
  * Electron Launcher Script
- * Starts Next.js on a random available port and launches Electron with that port.
+ * In production: Starts Next.js production server on a random port
+ * In development: Starts Next.js dev server on a random port
+ * Then launches Electron with that port.
  */
 
 const { spawn, exec } = require("child_process");
 const net = require("net");
 const path = require("path");
+const fs = require("fs");
+
+// Determine if we're running from a packaged app
+const isPackaged = process.env.ELECTRON_IS_PACKAGED === "true" ||
+    (process.defaultApp === undefined && !process.argv[0].includes("node"));
+
+// Get the app root directory
+const appRoot = isPackaged
+    ? path.join(process.resourcesPath, "app")
+    : path.join(__dirname, "..");
 
 // Get a random available port
 function getAvailablePort() {
@@ -20,7 +32,7 @@ function getAvailablePort() {
 }
 
 // Wait for a port to be ready
-function waitForPort(port, timeout = 30000) {
+function waitForPort(port, timeout = 60000) {
     const startTime = Date.now();
     return new Promise((resolve, reject) => {
         const check = () => {
@@ -43,9 +55,11 @@ function waitForPort(port, timeout = 30000) {
 
 async function main() {
     const mode = process.argv[2] || "dev"; // 'dev' or 'prod'
-    const isProd = mode === "prod";
+    const isProd = mode === "prod" || isPackaged;
 
     console.log(`[Launcher] Starting in ${isProd ? "production" : "development"} mode...`);
+    console.log(`[Launcher] App root: ${appRoot}`);
+    console.log(`[Launcher] Is packaged: ${isPackaged}`);
 
     // Get a random available port
     const port = await getAvailablePort();
@@ -59,11 +73,28 @@ async function main() {
     if (isProd) {
         // Production: Start next start on the port
         console.log("[Launcher] Starting Next.js production server...");
-        nextProcess = spawn("npm", ["run", "start", "--", "-p", port.toString()], {
-            stdio: "inherit",
-            shell: true,
-            env: { ...process.env },
-        });
+
+        // In packaged mode, we need to run next start from the app directory
+        const nextBin = path.join(appRoot, "node_modules", ".bin", "next");
+        const nextBinCmd = process.platform === "win32" ? `${nextBin}.cmd` : nextBin;
+
+        // Check if next binary exists
+        if (fs.existsSync(nextBinCmd) || fs.existsSync(nextBin)) {
+            nextProcess = spawn(nextBinCmd, ["start", "-p", port.toString()], {
+                stdio: "inherit",
+                shell: true,
+                cwd: appRoot,
+                env: { ...process.env, NODE_ENV: "production" },
+            });
+        } else {
+            // Fallback to npm run start
+            nextProcess = spawn("npm", ["run", "start", "--", "-p", port.toString()], {
+                stdio: "inherit",
+                shell: true,
+                cwd: appRoot,
+                env: { ...process.env, NODE_ENV: "production" },
+            });
+        }
     } else {
         // Development: Start next dev on the port
         console.log("[Launcher] Starting Next.js development server...");
@@ -85,25 +116,33 @@ async function main() {
         process.exit(1);
     }
 
-    // Build Electron (TypeScript)
-    console.log("[Launcher] Building Electron...");
-    await new Promise((resolve, reject) => {
-        exec("npm run build:electron", (error, stdout, stderr) => {
-            if (error) {
-                console.error("[Launcher] Electron build failed:", stderr);
-                reject(error);
-            } else {
-                console.log("[Launcher] Electron build complete!");
-                resolve();
-            }
+    // In development, build Electron TypeScript
+    if (!isPackaged && !isProd) {
+        console.log("[Launcher] Building Electron...");
+        await new Promise((resolve, reject) => {
+            exec("npm run build:electron", (error, stdout, stderr) => {
+                if (error) {
+                    console.error("[Launcher] Electron build failed:", stderr);
+                    reject(error);
+                } else {
+                    console.log("[Launcher] Electron build complete!");
+                    resolve();
+                }
+            });
         });
-    });
+    }
 
     // Start Electron with the port
     console.log("[Launcher] Starting Electron...");
-    const electronProcess = spawn("electron", ["."], {
+    const electronPath = isPackaged
+        ? process.execPath
+        : require("electron");
+
+    const electronArgs = isPackaged ? [] : ["."];
+    const electronProcess = spawn(electronPath, electronArgs, {
         stdio: "inherit",
-        shell: true,
+        shell: !isPackaged,
+        cwd: appRoot,
         env: { ...process.env, NEXT_PORT: port.toString() },
     });
 

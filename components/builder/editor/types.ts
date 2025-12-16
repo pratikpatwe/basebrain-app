@@ -28,6 +28,8 @@ export interface OpenFile {
     content: string
     language: string
     isDirty?: boolean
+    isPreview?: boolean  // If true, this is a preview tab (iframe)
+    previewUrl?: string  // URL to show in iframe (e.g., http://localhost:3000)
 }
 
 export interface EditorState {

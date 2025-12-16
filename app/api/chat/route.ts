@@ -484,6 +484,29 @@ Analyze the output and continue to the next step of your task.`;
                 let thinkingContent = "";
                 let buffer = "";
                 let sseBuffer = "";
+                let controllerClosed = false;
+
+                // Safe enqueue function to prevent writing to closed controller
+                const safeEnqueue = (data: Uint8Array) => {
+                    if (!controllerClosed) {
+                        try {
+                            controller.enqueue(data);
+                        } catch {
+                            controllerClosed = true;
+                        }
+                    }
+                };
+
+                const safeClose = () => {
+                    if (!controllerClosed) {
+                        controllerClosed = true;
+                        try {
+                            controller.close();
+                        } catch {
+                            // Already closed
+                        }
+                    }
+                };
 
                 try {
                     const reader = responseBody.getReader();
@@ -501,8 +524,17 @@ Analyze the output and continue to the next step of your task.`;
                             const data = line.slice(6);
                             if (data === "[DONE]") continue;
 
+                            // Parse JSON separately to isolate parse errors
+                            let chunk;
                             try {
-                                const chunk = JSON.parse(data);
+                                chunk = JSON.parse(data);
+                            } catch {
+                                // Skip invalid JSON chunks (incomplete data)
+                                continue;
+                            }
+
+                            // Process the parsed chunk
+                            try {
                                 const delta = chunk.choices?.[0]?.delta;
 
                                 // Track token usage
@@ -526,7 +558,7 @@ Analyze the output and continue to the next step of your task.`;
                                             if (thinkingStart === 0) {
                                                 isInThinking = true;
                                                 buffer = buffer.slice(7); // Remove <THINK>
-                                                controller.enqueue(
+                                                safeEnqueue(
                                                     encoder.encode(`data: ${JSON.stringify({ type: "thinking_start" })}\n\n`)
                                                 );
                                             } else if (doneStart === 0) {
@@ -543,7 +575,7 @@ Analyze the output and continue to the next step of your task.`;
                                                 break;
                                             } else {
                                                 // Regular content outside tags - send as content
-                                                controller.enqueue(
+                                                safeEnqueue(
                                                     encoder.encode(`data: ${JSON.stringify({ type: "content", content: buffer })}\n\n`)
                                                 );
                                                 buffer = "";
@@ -555,11 +587,11 @@ Analyze the output and continue to the next step of your task.`;
                                                 const thinkingPart = buffer.slice(0, endIndex);
                                                 if (thinkingPart) {
                                                     thinkingContent += thinkingPart;
-                                                    controller.enqueue(
+                                                    safeEnqueue(
                                                         encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: thinkingPart })}\n\n`)
                                                     );
                                                 }
-                                                controller.enqueue(
+                                                safeEnqueue(
                                                     encoder.encode(`data: ${JSON.stringify({ type: "thinking_end" })}\n\n`)
                                                 );
                                                 isInThinking = false;
@@ -570,7 +602,7 @@ Analyze the output and continue to the next step of your task.`;
                                                 const thinkingPart = buffer.slice(0, tagStart);
                                                 if (thinkingPart) {
                                                     thinkingContent += thinkingPart;
-                                                    controller.enqueue(
+                                                    safeEnqueue(
                                                         encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: thinkingPart })}\n\n`)
                                                     );
                                                 }
@@ -579,7 +611,7 @@ Analyze the output and continue to the next step of your task.`;
                                             } else {
                                                 // Send all as thinking content
                                                 thinkingContent += buffer;
-                                                controller.enqueue(
+                                                safeEnqueue(
                                                     encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: buffer })}\n\n`)
                                                 );
                                                 buffer = "";
@@ -590,7 +622,7 @@ Analyze the output and continue to the next step of your task.`;
                                                 // Send done content as final answer
                                                 const donePart = buffer.slice(0, endIndex).trim();
                                                 if (donePart) {
-                                                    controller.enqueue(
+                                                    safeEnqueue(
                                                         encoder.encode(`data: ${JSON.stringify({ type: "content", content: donePart })}\n\n`)
                                                     );
                                                 }
@@ -601,7 +633,7 @@ Analyze the output and continue to the next step of your task.`;
                                                 const tagStart = buffer.lastIndexOf("<");
                                                 const donePart = buffer.slice(0, tagStart).trim();
                                                 if (donePart) {
-                                                    controller.enqueue(
+                                                    safeEnqueue(
                                                         encoder.encode(`data: ${JSON.stringify({ type: "content", content: donePart })}\n\n`)
                                                     );
                                                 }
@@ -609,7 +641,7 @@ Analyze the output and continue to the next step of your task.`;
                                                 break;
                                             } else {
                                                 // Send all as done content
-                                                controller.enqueue(
+                                                safeEnqueue(
                                                     encoder.encode(`data: ${JSON.stringify({ type: "content", content: buffer })}\n\n`)
                                                 );
                                                 buffer = "";
@@ -645,9 +677,8 @@ Analyze the output and continue to the next step of your task.`;
                                         }
                                     }
                                 }
-                            } catch (parseError) {
-                                // Skip invalid JSON chunks
-                                console.warn("[Stream] Failed to parse chunk:", data);
+                            } catch {
+                                // Processing error (e.g., controller closed) - ignore
                             }
                         }
                     }
@@ -657,7 +688,7 @@ Analyze the output and continue to the next step of your task.`;
                         // Check if any tool call is run_command - this signals need to stop
                         const hasRunCommand = toolCalls.some(tc => tc.function.name === "run_command");
 
-                        controller.enqueue(
+                        safeEnqueue(
                             encoder.encode(`data: ${JSON.stringify({
                                 type: "tool_calls",
                                 tool_calls: toolCalls,
@@ -667,7 +698,7 @@ Analyze the output and continue to the next step of your task.`;
                     }
 
                     // Send final done event
-                    controller.enqueue(
+                    safeEnqueue(
                         encoder.encode(`data: ${JSON.stringify({
                             type: "done",
                             usage: {
@@ -679,13 +710,13 @@ Analyze the output and continue to the next step of your task.`;
                         })}\n\n`)
                     );
 
-                    controller.close();
+                    safeClose();
                 } catch (error) {
                     console.error("[Stream] Error:", error);
-                    controller.enqueue(
+                    safeEnqueue(
                         encoder.encode(`data: ${JSON.stringify({ type: "error", error: "Stream error" })}\n\n`)
                     );
-                    controller.close();
+                    safeClose();
                 }
             },
         });

@@ -2,6 +2,7 @@
 // Main components for building a VS Code-like code editor experience
 
 export { CodeEditor } from "./CodeEditor"
+export type { CodeEditorRef } from "./CodeEditor"
 export { FileExplorer } from "./FileExplorer"
 export { EditorTabs } from "./EditorTabs"
 export { EditorBreadcrumb } from "./EditorBreadcrumb"

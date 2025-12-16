@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Standalone mode creates a minimal production server
+  // Only includes required dependencies - much smaller bundle!
+  output: "standalone",
   images: {
     remotePatterns: [
       {

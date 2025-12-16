@@ -14,7 +14,12 @@
     "electron": "npm run dev:electron",
     "lint": "eslint",
     "rebuild:electron": "electron-rebuild",
-    "postinstall": "electron-rebuild"
+    "postinstall": "electron-rebuild",
+    "predist": "npm run build && npm run build:electron",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -86,6 +91,7 @@
     "@types/three": "^0.182.0",
     "concurrently": "^9.2.1",
     "electron": "^39.2.6",
+    "electron-builder": "^25.1.8",
     "electron-rebuild": "^3.2.9",
     "eslint": "^9",
     "eslint-config-next": "^16.0.10",
@@ -97,24 +103,62 @@
     "appId": "com.basebrain.app",
     "productName": "BaseBrain",
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/better-sqlite3/**",
+      "**/keytar/**"
+    ],
     "files": [
-      "system/electron/dist/**/*",
-      "out/**/*",
+      ".next/standalone/**/*",
+      ".next/static/**/*",
       "public/**/*",
-      "node_modules/**/*",
-      "package.json"
+      "system/electron/dist/**/*",
+      "!**/*.map",
+      "!**/*.ts"
+    ],
+    "extraResources": [
+      {
+        "from": ".env.local",
+        "to": ".env.local"
+      },
+      {
+        "from": ".next/static",
+        "to": "app/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "app/public"
+      }
     ],
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "public/app-logo.png"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "public/app-logo.png",
       "category": "public.app-category.developer-tools"
